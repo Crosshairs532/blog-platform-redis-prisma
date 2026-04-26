@@ -8,7 +8,7 @@ url      = env("DATABASE_URL")
 }
 
 model User {
-  id           Int       @id @default(autoincrement())
+  id           String    @id @default(uuid())
   username     String    @unique
   email        String    @unique
   passwordHash String
@@ -27,8 +27,8 @@ model User {
 }
 
 model Follow {
-  followerId  Int
-  followingId Int
+  followerId  String
+  followingId String
 
   follower    User @relation("following", fields: [followerId], references: [id], onDelete: Cascade)
   following   User @relation("followers", fields: [followingId], references: [id], onDelete: Cascade)
@@ -40,8 +40,8 @@ model Follow {
 }
 
 model Post {
-  id        Int      @id @default(autoincrement())
-  userId    Int
+  id        String    @id @default(uuid())
+  userId    String
   content   String
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -55,9 +55,9 @@ model Post {
 }
 
 model Repost {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  postId    Int
+  id        String    @id @default(uuid())
+  userId    String
+  postId    String
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
@@ -69,9 +69,9 @@ model Repost {
 }
 
 model Comment {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  postId    Int
+  id        String    @id @default(uuid())
+  userId    String
+  postId    String
   content   String
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -84,8 +84,8 @@ model Comment {
 }
 
 model Notification {
-  id        Int      @id @default(autoincrement())
-  userId    Int
+  id        String    @id @default(uuid())
+  userId    String
   type      String  
   data      Json    
   isRead    Boolean  @default(false)

@@ -5,8 +5,6 @@ import { generateToken } from "../../../utils/jwt";
 import type { Request } from "express";
 import { getRedisClient } from "../../../config/redis";
 
-const authKey = (key: string, value: any) => `user:${key}:${value}`;
-
 export const registerUser = async ({ username, email, password }: any) => {
   const hashed = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({
@@ -20,54 +18,81 @@ export const registerUser = async ({ username, email, password }: any) => {
   return user;
 };
 
-export const loginUser = async ({ email, password }: any) => {
+export const loginUser = async (req: any, { email, password }: any) => {
   const redisClient: any = getRedisClient();
+
   const user = await prisma.user.findUnique({
     where: { email },
   });
-
   if (!user) throw new Error("User not found");
 
   const isValid = await bcrypt.compare(password, user.passwordHash);
   if (!isValid) throw new Error("Invalid password");
 
-  const accessToken = generateToken(user, "15m");
-  const refreshToken = generateToken(user, "7d");
-  console.log(refreshToken);
+  // generate session Id
+  const sessionId = `${user.id}-${Date.now()}`;
+  console.info(sessionId);
+
+  const JwtPayload = {
+    userId: user.id,
+    sessionId: sessionId,
+    email: user.email,
+  };
+  const accessToken = generateToken(JwtPayload, "15m");
+  const refreshToken = generateToken(JwtPayload, "7d");
+
+  const sessionData = {
+    sessionId: sessionId,
+    userId: user.id,
+    email: user.email,
+    accessToken: accessToken,
+    refreshToken: refreshToken,
+    deviceInfo: req.headers["user-agent"],
+    ipAddress: req.ip,
+    createdAt: Date.now(),
+    lastActivity: Date.now(),
+  };
+  console.info("session Data: ", sessionData);
+
+  // user:userId:sessions: {} ---> key
+  // session:sessionId: {userId, email, deviceInfo, ipAddress, createdAt, lastActivity}
+
   //! redis
-  redisClient.set(
-    authKey("refresh_token", refreshToken),
-    JSON.stringify(user),
-    {
-      EX: 60 * 60 * 24 * 7,
-    },
-  );
+
+  const USER_SESSIONS_KEY = `user:${user.id}:sessions`;
+  const SESSION_KEY = `session:${sessionId}`;
+
+  await redisClient.sAdd(USER_SESSIONS_KEY, sessionId);
+  await redisClient.hSet(SESSION_KEY, sessionData, {
+    EX: 60 * 60 * 24 * 7,
+  });
 
   return {
-    message: "Login Successful",
+    success: true,
     accessToken,
     refreshToken,
+    sessionId,
+    user: { id: user.id, email: user.email, username: user.username },
   };
 };
 
 export const logoutUser = async (req: Request) => {
   const redisClient: any = getRedisClient();
-  const token = req.headers.authorization?.split(" ")[1] as string;
-  const decoded = jwt.decode(token) as JwtPayload;
+  const accessToken = req.headers.authorization?.split(" ")[1];
+  const decoded = jwt.decode(accessToken as string) as JwtPayload;
+
   const now = Math.floor(Date.now() / 1000);
-  const timeLeft = decoded.exp! - now;
+  const timeLeft = decoded?.exp! - now;
+  const user = req?.user;
   if (timeLeft > 0) {
-    await redisClient.set(`blacklist:${token}`, "true", { EX: timeLeft });
+    await redisClient.set(`blacklist:${accessToken}`, "true", { EX: timeLeft });
   }
   console.log("Session Daa -1 ");
-  if (token) {
-    const sessionData = await redisClient.get(`user:refresh_token:${token}`);
-    console.log(sessionData);
-    if (sessionData) {
-      console.log("Session Daa -2");
-      await redisClient.del(
-        `user:refresh_token:eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsImVtYWlsIjoic2Ftc3VsQG1haWwuY29tIiwiaWF0IjoxNzc3MTkxNzYwLCJleHAiOjE3Nzc3OTY1NjB9.mXErJYHAxx5OZobJXa9cX1QlnRnITcjOjJ53RHR2bl8`,
-      );
-    }
+  const { refreshToken } = req.body;
+  if (refreshToken) {
+    const key = `user:refresh_token:${refreshToken}`;
+    await redisClient.del(key);
+  } else {
+    console.log("No token provided for logout.");
   }
 };

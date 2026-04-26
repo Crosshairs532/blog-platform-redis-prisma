@@ -15,7 +15,7 @@ export const register = async (req: Request, res: Response) => {
 
 export const login = async (req: Request, res: Response) => {
   try {
-    const user = await loginUser(req.body);
+    const user = await loginUser(req, req.body);
 
     res.json({ user });
   } catch (err: any) {
