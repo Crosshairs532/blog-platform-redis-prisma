@@ -1,0 +1,98 @@
+generator client {
+provider = "prisma-client-js"
+}
+
+datasource db {
+provider = "postgresql"
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  username     String    @unique
+  email        String    @unique
+  passwordHash String
+  bio          String?
+
+  posts        Post[]
+  comments     Comment[]
+  reposts      Repost[]
+
+  followers    Follow[]  @relation("followers")
+  following    Follow[]  @relation("following")
+  notifications Notification[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  @@index([username])
+}
+
+model Follow {
+  followerId  Int
+  followingId Int
+
+  follower    User @relation("following", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User @relation("followers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+
+  @@id([followerId, followingId]) 
+  @@index([followingId])
+}
+
+model Post {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  content   String
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comments  Comment[]
+  reposts   Repost[]
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Repost {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  postId    Int
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, postId]) 
+  @@index([postId])
+}
+
+model Comment {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  postId    Int
+  content   String
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([postId])
+  @@index([userId])
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  type      String  
+  data      Json    
+  isRead    Boolean  @default(false)
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+}
