@@ -22,10 +22,17 @@ export const registerUser = async ({ username, email, password }: any) => {
 export const loginUser = async (req: any, { email, password }: any) => {
   const redisClient: any = getRedisClient();
 
+  //! check if user login session limit exceeded
+
   const user = await prisma.user.findUnique({
     where: { email },
   });
   if (!user) throw new Error("User not found");
+
+  const sessionIds = await redisClient.sMembers(`user:${user.id}:sessions`);
+  if (sessionIds.length >= 2) {
+    throw new Error("Maximum login sessions exceeded");
+  }
 
   const isValid = await bcrypt.compare(password, user.passwordHash);
   if (!isValid) throw new Error("Invalid password");
@@ -111,7 +118,7 @@ export const logoutAllDevices = async (req: Request) => {
   const redis = getRedisClient();
   const userId = req.user?.id;
 
-  const sessionIds = await redis.smembers(`user:${userId}:sessions`);
+  const sessionIds = await redis.sMembers(`user:${userId}:sessions`);
 
   for (const sessionId of sessionIds) {
     await redis.del(`session:${sessionId}`);
