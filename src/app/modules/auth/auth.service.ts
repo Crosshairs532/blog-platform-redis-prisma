@@ -4,6 +4,7 @@ import jwt, { type JwtPayload } from "jsonwebtoken";
 import { generateToken } from "../../../utils/jwt";
 import type { Request } from "express";
 import { getRedisClient } from "../../../config/redis";
+import { UAParser } from "ua-parser-js";
 
 export const registerUser = async ({ username, email, password }: any) => {
   const hashed = await bcrypt.hash(password, 10);
@@ -32,12 +33,15 @@ export const loginUser = async (req: any, { email, password }: any) => {
   // generate session Id
   const sessionId = `${user.id}-${Date.now()}`;
   console.info(sessionId);
-
+  const ua = new UAParser(req.headers["user-agent"]).getResult();
+  const deviceName = `${ua.browser.name || "Unknown"} on ${ua.os.name || "Unknown"}`;
   const JwtPayload = {
     userId: user.id,
     sessionId: sessionId,
     email: user.email,
   };
+
+  console.log({ JwtPayload });
   const accessToken = generateToken(JwtPayload, "15m");
   const refreshToken = generateToken(JwtPayload, "7d");
 
@@ -47,10 +51,11 @@ export const loginUser = async (req: any, { email, password }: any) => {
     email: user.email,
     accessToken: accessToken,
     refreshToken: refreshToken,
-    deviceInfo: req.headers["user-agent"],
+    deviceInfo: deviceName,
     ipAddress: req.ip,
     createdAt: Date.now(),
     lastActivity: Date.now(),
+    isActive: "true",
   };
   console.info("session Data: ", sessionData);
 
@@ -77,22 +82,114 @@ export const loginUser = async (req: any, { email, password }: any) => {
 };
 
 export const logoutUser = async (req: Request) => {
-  const redisClient: any = getRedisClient();
-  const accessToken = req.headers.authorization?.split(" ")[1];
-  const decoded = jwt.decode(accessToken as string) as JwtPayload;
+  const redis = getRedisClient();
+  const sessionId = req.sessionId;
+  const userId = req.user?.id;
 
-  const now = Math.floor(Date.now() / 1000);
-  const timeLeft = decoded?.exp! - now;
-  const user = req?.user;
-  if (timeLeft > 0) {
-    await redisClient.set(`blacklist:${accessToken}`, "true", { EX: timeLeft });
+  if (!sessionId) {
+    throw new Error("No active session found");
   }
-  console.log("Session Daa -1 ");
-  const { refreshToken } = req.body;
-  if (refreshToken) {
-    const key = `user:refresh_token:${refreshToken}`;
-    await redisClient.del(key);
-  } else {
-    console.log("No token provided for logout.");
+  await redis.del(`session:${sessionId}`);
+  await redis.sRem(`user:${userId}:sessions`, sessionId);
+
+  const accessToken = req.headers.authorization?.split(" ")[1];
+  console.log(`user:${userId}:sessions`, sessionId);
+  console.log("logout user -", accessToken);
+  if (accessToken) {
+    const decoded = jwt.decode(accessToken) as any;
+    if (decoded && decoded.exp) {
+      const timeLeft = decoded.exp - Math.floor(Date.now() / 1000);
+      if (timeLeft > 0) {
+        await redis.set(`blacklist:${accessToken}`, timeLeft);
+      }
+    }
   }
+  return { success: true, message: "Logged out successfully" };
+};
+
+export const logoutAllDevices = async (req: Request) => {
+  const redis = getRedisClient();
+  const userId = req.user?.id;
+
+  const sessionIds = await redis.smembers(`user:${userId}:sessions`);
+
+  for (const sessionId of sessionIds) {
+    await redis.del(`session:${sessionId}`);
+  }
+
+  await redis.del(`user:${userId}:sessions`);
+
+  return {
+    success: true,
+    message: `Logged out from ${sessionIds.length} devices`,
+  };
+};
+
+export const refreshAccessToken = async (refreshToken: string) => {
+  const redis = getRedisClient();
+  let decoded;
+  try {
+    decoded = jwt.verify(
+      refreshToken,
+      process.env.JWT_REFRESH_SECRET as string,
+    ) as any;
+  } catch (err) {
+    throw new Error("Invalid refresh token");
+  }
+  const sessionId = decoded.sessionId;
+  const sessionExists = await redis.exists(`session:${sessionId}`);
+  if (!sessionExists) {
+    throw new Error("Session not found");
+  }
+
+  const newAccessToken = jwt.sign(
+    { userId: decoded.userId, sessionId: sessionId, email: decoded.email },
+    process.env.JWT_SECRET as string,
+    { expiresIn: "15m" },
+  );
+
+  const newRefreshToken = jwt.sign(
+    {
+      userId: decoded.userId,
+      sessionId: sessionId,
+      email: decoded.email,
+      version: decoded.version + 1,
+    },
+    process.env.JWT_REFRESH_SECRET as string,
+    { expiresIn: "7d" },
+  );
+
+  await redis.hset(`session:${sessionId}`, {
+    accessToken: newAccessToken,
+    refreshToken: newRefreshToken,
+    refreshTokenVersion: decoded.version + 1,
+    lastActivity: Date.now(),
+  });
+
+  return { accessToken: newAccessToken, refreshToken: newRefreshToken };
+};
+
+export const getUserSessions = async (userId: string) => {
+  const redis = getRedisClient();
+  console.log("All sessionIds - ", `user:${userId}:sessions`);
+  const sessionIds = await redis.sMembers(`user:${userId}:sessions`);
+  console.log("All sessionIds - ", sessionIds);
+  const sessions = [];
+
+  for (const sessionId of sessionIds) {
+    const sessionData = await redis.hGetAll(`session:${sessionId}`);
+    if (sessionData && Object.keys(sessionData).length > 0) {
+      sessions.push({
+        sessionId: sessionData.sessionId,
+        deviceInfo: sessionData.deviceInfo,
+        ipAddress: sessionData.ipAddress,
+        createdAt: new Date(parseInt(sessionData.createdAt)),
+        lastActivity: new Date(parseInt(sessionData.lastActivity)),
+      });
+    }
+  }
+
+  console.log("All user session - ", sessions);
+
+  return sessions;
 };
