@@ -1,13 +1,17 @@
 import express from "express";
-import { follow, unfollow } from "./follow.controller.js";
+import {
+  fetchFollower,
+  fetchFollowing,
+  follow,
+  unfollow,
+} from "./follow.controller.js";
 import { authMiddleware } from "../../../middlewares/auth.middleware.js";
-import { getFollowers, getFollowing } from "./follow.service.js";
 
 const router = express.Router();
 
 router.post("/:userId/follow", authMiddleware, follow);
 router.post("/:userId/unfollow", authMiddleware, unfollow);
-router.get("/:userId/followers", authMiddleware, getFollowers);
-router.get("/:userId/following", authMiddleware, getFollowing);
+router.get("/followers", authMiddleware, fetchFollower);
+router.get("/following", authMiddleware, fetchFollowing);
 
 export default router;

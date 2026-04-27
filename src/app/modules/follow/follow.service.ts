@@ -4,6 +4,8 @@ import { getRedisClient } from "../../../config/redis";
 export const getFollowers = async (userId: string) => {
   const redisClient = getRedisClient();
   let followers = await redisClient.sMembers(`followers:${userId}`);
+
+  console.log("Followers: ", followers);
   if (followers.length === 0) {
     const data = await prisma.follow.findMany({
       where: { followingId: userId },
@@ -14,6 +16,7 @@ export const getFollowers = async (userId: string) => {
 
     if (followers.length > 0) {
       await redisClient.sAdd(`followers:${userId}`, followers);
+      await redisClient.expire(`followers:${userId}`, 3600);
     }
   }
   return followers;

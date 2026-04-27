@@ -1,6 +1,8 @@
 import express from "express";
 import authRoutes from "../app/modules/auth/auth.route.js";
 import followRoutes from "../app/modules/follow/follow.routes.js";
+import postRoutes from "../app/modules/Post/post.routes.js";
+
 const router = express.Router();
 
 const allRoutes = [
@@ -11,6 +13,10 @@ const allRoutes = [
   {
     path: "/follow",
     route: followRoutes,
+  },
+  {
+    path: "/posts",
+    route: postRoutes,
   },
 ];
 
