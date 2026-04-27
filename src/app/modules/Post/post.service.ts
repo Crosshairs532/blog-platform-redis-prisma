@@ -1,5 +1,7 @@
 import { prisma } from "../../../config/db";
 import { getRedisClient } from "../../../config/redis";
+import { createNotification } from "../notification/notification.service";
+import { pushEmailJob } from "../notification/queue.service";
 
 export const createPost = async (userId: string, content: string) => {
   const redisClient = await getRedisClient();
@@ -22,10 +24,29 @@ export const createPost = async (userId: string, content: string) => {
   const pipeline = redisClient.multi();
 
   for (const followerId of followers) {
+    // add to followers feed
     pipeline.zAdd(`feed:${followerId}`, {
       score: timestamp,
       value: `post:${post.id}`,
     });
+    // add notification to followers
+    await createNotification({
+      userId: followerId,
+      type: "POST_CREATED",
+      data: {
+        actorId: userId,
+        postId: post.id,
+      },
+    });
+    // send email to followers
+    pipeline.lPush(
+      "queue:email",
+      JSON.stringify({
+        toUserId: followerId,
+        type: "NEW_POST",
+        postId: post.id,
+      }),
+    );
   }
   await pipeline.exec();
 
