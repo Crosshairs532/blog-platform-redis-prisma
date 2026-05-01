@@ -5,6 +5,7 @@ import http from "http";
 import cors from "cors";
 import { Server } from "socket.io";
 import { globalErrorHandler } from "./middlewares/global.error";
+import { startWorker } from "./workers/email.worker";
 const app = express();
 const server = http.createServer(app);
 
@@ -26,6 +27,7 @@ app.use("/api", router);
 app.use(globalErrorHandler);
 
 connectRedis();
+startWorker();
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);

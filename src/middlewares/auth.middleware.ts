@@ -18,8 +18,8 @@ export const authMiddleware = async (
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as any;
     const sessionExists = await redis.exists(`session:${decoded.sessionId}`);
-    console.log(decoded, "authMiddleware");
-    console.log({ sessionExists }, "lol");
+    // console.log(decoded, "authMiddleware");
+    // console.log({ sessionExists }, "lol");
     if (!sessionExists) {
       return res
         .status(401)
@@ -27,12 +27,12 @@ export const authMiddleware = async (
     }
 
     //! check if token has been compromised
-    console.log("decoded.sessionId - ", decoded.sessionId);
+    // console.log("decoded.sessionId - ", decoded?.sessionId);
     const isActive = await redis.hGet(
-      `session:${decoded.sessionId}`,
+      `session:${decoded?.sessionId}`,
       "isActive",
     );
-    console.log({ isActive }, "kire");
+    // console.log({ isActive }, "kire");
     if (isActive === "false") {
       return res.status(401).json({ error: "Session deactivated" });
     }
@@ -42,10 +42,12 @@ export const authMiddleware = async (
       "lastActivity",
       Date.now(),
     );
+
+    // console.log({ decoded });
     req.user = decoded;
     req.sessionId = decoded.sessionId;
 
-    console.log("Auth Middleware");
+    // console.log("Auth Middleware");
     next();
   } catch (error) {
     return res.status(401).json({ error: "Invalid token" });

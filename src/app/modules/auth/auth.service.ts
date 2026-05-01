@@ -6,6 +6,7 @@ import type { Request } from "express";
 import { getRedisClient } from "../../../config/redis";
 import { UAParser } from "ua-parser-js";
 import { handlePrismaError } from "../../../utils/PrismaError";
+import { AppError } from "../../../utils/ AppError";
 
 export const registerUser = async ({ username, email, password }: any) => {
   try {
@@ -25,19 +26,21 @@ export const registerUser = async ({ username, email, password }: any) => {
 };
 
 export const loginUser = async (req: any, { email, password }: any) => {
+  /*
+     1. Check if user exists
+     2. Get all the sessions
+     3. Check of same device login 
+     4. Remove the old login infos and update the session
+     5. Check for Max login Exceed
+     6. generate a session ID 
+  */
+
   const redisClient: any = getRedisClient();
 
-  //! check if user login session limit exceeded
   const user = await prisma.user.findUnique({
     where: { email },
   });
   if (!user) throw new Error("User not found");
-
-  //* maximum Session Exceed Logic
-  const sessionIds = await redisClient.sMembers(`user:${user.id}:sessions`);
-  if (sessionIds.length >= 2) {
-    throw new Error("Maximum login sessions exceeded");
-  }
 
   //* Hash Password
   const isValid = await bcrypt.compare(password, user.passwordHash);
@@ -46,9 +49,6 @@ export const loginUser = async (req: any, { email, password }: any) => {
   //* generate session Id
   const sessionId = `${user.id}-${Date.now()}`;
   console.info(sessionId);
-  const ua = new UAParser(req.headers["user-agent"]).getResult();
-  const deviceName = `${ua.browser.name || "Unknown"} on ${ua.os.name || "Unknown"}`;
-  // 1
   const JwtPayload = {
     userId: user.id,
     sessionId: sessionId,
@@ -56,7 +56,40 @@ export const loginUser = async (req: any, { email, password }: any) => {
   };
 
   console.log({ JwtPayload });
-  const accessToken = generateToken(JwtPayload, "15m");
+
+  //* maximum Session Exceed Logic
+  const sessionIds = await redisClient.sMembers(`user:${user.id}:sessions`);
+
+  const ua = new UAParser(req.headers["user-agent"]).getResult();
+  const deviceName = `${ua.browser.name || "Unknown"} on ${ua.os.name || "Unknown"}`;
+
+  // check if logged in from same device and save browser
+  let existingSessionId = null;
+  for (const sid of sessionIds) {
+    const sessionData = await redisClient.hGetAll(`session:${sid}`);
+    if (
+      sessionData.deviceInfo === deviceName &&
+      sessionData.ipAddress === req.ip
+    ) {
+      existingSessionId = sid;
+      break;
+    }
+  }
+  if (existingSessionId) {
+    // Same device - remove old session, allow new one
+    await redisClient.del(`session:${existingSessionId}`);
+    await redisClient.sRem(`user:${user.id}:sessions`, existingSessionId);
+    // Remove from sessionIds array for limit check
+    const index = sessionIds.indexOf(existingSessionId);
+    if (index > -1) sessionIds.splice(index, 1);
+  }
+
+  //! check if user login session limit exceeded
+  if (sessionIds.length >= 2) {
+    throw new Error("Maximum login sessions exceeded");
+  }
+
+  const accessToken = generateToken(JwtPayload, "20m");
   const refreshToken = generateToken(JwtPayload, "7d");
 
   const sessionData = {
@@ -81,9 +114,8 @@ export const loginUser = async (req: any, { email, password }: any) => {
   const SESSION_KEY = `session:${sessionId}`;
 
   await redisClient.sAdd(USER_SESSIONS_KEY, sessionId);
-  await redisClient.hSet(SESSION_KEY, sessionData, {
-    EX: 60 * 60 * 24 * 7,
-  });
+  await redisClient.hSet(SESSION_KEY, sessionData);
+  await redisClient.expire(SESSION_KEY, 60 * 60 * 24 * 7);
 
   return {
     success: true,
@@ -94,40 +126,52 @@ export const loginUser = async (req: any, { email, password }: any) => {
   };
 };
 
-export const logoutUser = async (req: Request) => {
-  const redis = getRedisClient();
-  const sessionId = req.sessionId;
-  const userId = req.user?.id;
+const blacklistToken = async (redis: any, token: string) => {
+  if (!token) return;
 
-  if (!sessionId) {
-    throw new Error("No active session found");
-  }
-  await redis.del(`session:${sessionId}`);
-  await redis.sRem(`user:${userId}:sessions`, sessionId);
-
-  const accessToken = req.headers.authorization?.split(" ")[1];
-  console.log(`user:${userId}:sessions`, sessionId);
-  console.log("logout user -", accessToken);
-  if (accessToken) {
-    const decoded = jwt.decode(accessToken) as any;
-    if (decoded && decoded.exp) {
-      const timeLeft = decoded.exp - Math.floor(Date.now() / 1000);
-      if (timeLeft > 0) {
-        await redis.set(`blacklist:${accessToken}`, timeLeft);
-      }
+  const decoded = jwt.decode(token) as any;
+  if (decoded && decoded.exp) {
+    const timeLeft = decoded.exp - Math.floor(Date.now() / 1000);
+    if (timeLeft > 0) {
+      await redis.set(`blacklist:${token}`, timeLeft);
     }
   }
+};
 
-  return { success: true, message: "Logged out successfully" };
+export const logoutUser = async (req: Request) => {
+  const redis = getRedisClient();
+  try {
+    const sessionId = req?.sessionId;
+    const userId = req?.user?.userId;
+
+    console.log(userId, "logoutUser");
+
+    if (!sessionId) throw new Error("No active session found");
+    if (!userId) throw new Error("Unauthorized");
+    await redis.del(`session:${sessionId}`);
+    const allSessionIDs = await redis.sMembers(`user:${userId}:sessions`);
+    console.log({ allSessionIDs }, { sessionId });
+    await redis.sRem(`user:${userId}:sessions`, sessionId);
+    const accessToken = req.headers.authorization?.split(" ")[1];
+    await blacklistToken(redis, accessToken as string);
+    return { success: true, message: "Logged out successfully" };
+  } catch (error: any) {
+    throw new AppError(error?.message, 500);
+  }
 };
 
 export const logoutAllDevices = async (req: Request) => {
   const redis = getRedisClient();
-  const userId = req.user?.id;
+  const userId = req?.user?.userId;
 
+  console.log("logout userId: ", userId);
   const sessionIds = await redis.sMembers(`user:${userId}:sessions`);
+  console.log("Logout: ", sessionIds);
 
   for (const sessionId of sessionIds) {
+    const sessionData = await redis.hGetAll(`session:${sessionId}`);
+    console.log("sessionData-Logout: ", sessionIds);
+    await blacklistToken(redis, sessionData.accessToken);
     await redis.del(`session:${sessionId}`);
   }
 
@@ -167,19 +211,16 @@ export const refreshAccessToken = async (refreshToken: string) => {
       userId: decoded.userId,
       sessionId: sessionId,
       email: decoded.email,
-      version: decoded.version + 1,
     },
     process.env.JWT_REFRESH_SECRET as string,
     { expiresIn: "7d" },
   );
 
-  await redis.hset(`session:${sessionId}`, {
+  await redis.hSet(`session:${sessionId}`, {
     accessToken: newAccessToken,
     refreshToken: newRefreshToken,
-    refreshTokenVersion: decoded.version + 1,
     lastActivity: Date.now(),
   });
-
   return { accessToken: newAccessToken, refreshToken: newRefreshToken };
 };
 

@@ -7,7 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "server": "nodemon --watch 'src/**/*.ts' --exec 'tsx' src/server.ts",
     "worker": "tsx src/workers/email.worker.ts",
-    "dev": "concurrently \" npm run server \" \"npm run worker\""
+    "dev": "concurrently \" npm run server \""
   },
   "keywords": [],
   "author": "",

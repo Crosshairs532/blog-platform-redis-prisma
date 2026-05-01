@@ -3,6 +3,7 @@ import { sendEmail } from "../app/modules/notification/queue.service";
 import { prisma } from "../config/db";
 import { getRedisClient } from "../config/redis";
 import pLimit from "p-limit";
+import { AppError } from "../utils/ AppError";
 
 const limit = pLimit(5);
 let isShuttingDown = false;
@@ -34,35 +35,39 @@ const processEmailJob = async (job: any) => {
   });
 };
 
-const startWorker = async () => {
+export const startWorker = async () => {
   const redis = getRedisClient();
-  while (true) {
-    if (isShuttingDown) break;
-    try {
-      const job = await redis.brPop("queue:email", 5);
-      if (!job) continue;
+  try {
+    while (true) {
+      if (isShuttingDown) break;
+      try {
+        const job = await redis.brPop("queue:email", 5);
+        if (!job) continue;
 
-      const parsed = JSON.parse(job.element);
+        const parsed = JSON.parse(job.element);
 
-      // tracking how many times Email sending have been retired
-      parsed.attempts = (parsed.attempts || 0) + 1;
+        // tracking how many times Email sending have been retired
+        parsed.attempts = (parsed.attempts || 0) + 1;
 
-      // retry failed mails
-      const task = limit(() => processEmailJob(parsed)).catch(async (err) => {
-        console.error("Email job failed:", err);
-        if (parsed.attempts < 3) {
-          await redis.lPush("queue:email", JSON.stringify(parsed));
-        } else {
-          await redis.lPush("queue:email:dead", JSON.stringify(parsed));
-        }
-      });
+        // retry failed mails
+        const task = limit(() => processEmailJob(parsed)).catch(async (err) => {
+          console.error("Email job failed:", err);
+          if (parsed.attempts < 3) {
+            await redis.lPush("queue:email", JSON.stringify(parsed));
+          } else {
+            await redis.lPush("queue:email:dead", JSON.stringify(parsed));
+          }
+        });
 
-      inFlight.add(task);
-      task.finally(() => inFlight.delete(task));
-    } catch (error: any) {
-      console.error("Worker poll error:", error);
-      await new Promise((r) => setTimeout(error, 1000));
+        inFlight.add(task);
+        task.finally(() => inFlight.delete(task));
+      } catch (error: any) {
+        console.error("Worker poll error:", error);
+        await new Promise((r) => setTimeout(error, 1000));
+      }
     }
+  } catch (error) {
+    throw new AppError(error?.message, 500);
   }
 };
 
@@ -75,5 +80,3 @@ const shutdown = async (signal: string) => {
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
-
-startWorker();

@@ -108,6 +108,10 @@ export const getFeed = async (userId: string, page = 0, limit = 10) => {
   if (missingPostIds.length > 0) {
     const dbPosts = await prisma.post.findMany({
       where: { id: { in: missingPostIds } },
+      include: {
+        user: true,
+        comments: true,
+      },
     });
 
     for (const dbPost of dbPosts) {
