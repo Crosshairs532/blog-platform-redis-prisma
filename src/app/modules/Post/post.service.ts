@@ -3,6 +3,12 @@ import { getRedisClient } from "../../../config/redis";
 import { createNotification } from "../notification/notification.service";
 import { pushEmailJob } from "../notification/queue.service";
 
+// post
+// middleware --> post create
+// use ----> single post, all post -- feed -- follow
+//  post --> follower
+// fan-out - write
+
 export const createPost = async (userId: string, content: string) => {
   const redisClient = await getRedisClient();
   const post = await prisma.post.create({
@@ -17,36 +23,49 @@ export const createPost = async (userId: string, content: string) => {
     EX: 60,
   });
 
+  // find user followers
   const followers = await redisClient.sMembers(`followers:${userId}`);
 
+  // fan-out write to followers
   followers.push(String(userId));
   console.log(" followers: ", followers);
+
+  // transaction started
   const pipeline = redisClient.multi();
 
+  // notification creation + email queue push
+  const notificationPromises = followers.map(async (followerId: string) => {
+    try {
+      pipeline.lPush(
+        "queue:email",
+        JSON.stringify({
+          toUserId: followerId,
+          type: "NEW_POST",
+          postId: post.id,
+          actorId: userId,
+        }),
+      );
+
+      // create notification on DB
+      // push on redis queue
+      await createNotification({
+        userId: followerId,
+        type: "POST_CREATED",
+        data: { actorId: userId, postId: post.id },
+      });
+    } catch (err) {
+      console.error(`Failed to notify follower ${followerId}:`, err);
+    }
+  });
+
+  await Promise.allSettled(notificationPromises);
+
+  // follower feed update
   for (const followerId of followers) {
-    // add to followers feed
     pipeline.zAdd(`feed:${followerId}`, {
       score: timestamp,
       value: `post:${post.id}`,
     });
-    // add notification to followers
-    await createNotification({
-      userId: followerId,
-      type: "POST_CREATED",
-      data: {
-        actorId: userId,
-        postId: post.id,
-      },
-    });
-    // send email to followers
-    pipeline.lPush(
-      "queue:email",
-      JSON.stringify({
-        toUserId: followerId,
-        type: "NEW_POST",
-        postId: post.id,
-      }),
-    );
   }
   await pipeline.exec();
 
@@ -79,7 +98,8 @@ export const getFeed = async (userId: string, page = 0, limit = 10) => {
       posts[index] = JSON.parse(data);
     } else {
       // if you have the key but no value ,
-      // it means the post was created but not cached yet, so we need to fetch it from the database
+      // it means the post was created but invalidated,
+      // so we need to fetch it from the database
       const id = items[index].split(":")[1];
       missingPostIds.push(id);
       missingIndices.push(index);

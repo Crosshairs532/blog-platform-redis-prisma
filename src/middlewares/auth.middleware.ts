@@ -27,7 +27,6 @@ export const authMiddleware = async (
     }
 
     //! check if token has been compromised
-
     console.log("decoded.sessionId - ", decoded.sessionId);
     const isActive = await redis.hGet(
       `session:${decoded.sessionId}`,

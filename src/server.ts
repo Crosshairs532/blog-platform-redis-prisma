@@ -4,6 +4,7 @@ import { connectRedis } from "./config/redis";
 import http from "http";
 import cors from "cors";
 import { Server } from "socket.io";
+import { globalErrorHandler } from "./middlewares/global.error";
 const app = express();
 const server = http.createServer(app);
 
@@ -22,9 +23,7 @@ app.use(
 
 app.use("/api", router);
 
-app.use((err, req, res) => {
-  console.error(err?.stack);
-});
+app.use(globalErrorHandler);
 
 connectRedis();
 

@@ -5,43 +5,50 @@ import { generateToken } from "../../../utils/jwt";
 import type { Request } from "express";
 import { getRedisClient } from "../../../config/redis";
 import { UAParser } from "ua-parser-js";
+import { handlePrismaError } from "../../../utils/PrismaError";
 
 export const registerUser = async ({ username, email, password }: any) => {
-  const hashed = await bcrypt.hash(password, 10);
-  const user = await prisma.user.create({
-    data: {
-      username,
-      email,
-      passwordHash: hashed,
-    },
-  });
+  try {
+    const hashed = await bcrypt.hash(password, 10);
+    const user = await prisma.user.create({
+      data: {
+        username,
+        email,
+        passwordHash: hashed,
+      },
+    });
 
-  return user;
+    return user;
+  } catch (error) {
+    handlePrismaError(error);
+  }
 };
 
 export const loginUser = async (req: any, { email, password }: any) => {
   const redisClient: any = getRedisClient();
 
   //! check if user login session limit exceeded
-
   const user = await prisma.user.findUnique({
     where: { email },
   });
   if (!user) throw new Error("User not found");
 
+  //* maximum Session Exceed Logic
   const sessionIds = await redisClient.sMembers(`user:${user.id}:sessions`);
   if (sessionIds.length >= 2) {
     throw new Error("Maximum login sessions exceeded");
   }
 
+  //* Hash Password
   const isValid = await bcrypt.compare(password, user.passwordHash);
   if (!isValid) throw new Error("Invalid password");
 
-  // generate session Id
+  //* generate session Id
   const sessionId = `${user.id}-${Date.now()}`;
   console.info(sessionId);
   const ua = new UAParser(req.headers["user-agent"]).getResult();
   const deviceName = `${ua.browser.name || "Unknown"} on ${ua.os.name || "Unknown"}`;
+  // 1
   const JwtPayload = {
     userId: user.id,
     sessionId: sessionId,
@@ -70,7 +77,6 @@ export const loginUser = async (req: any, { email, password }: any) => {
   // session:sessionId: {userId, email, deviceInfo, ipAddress, createdAt, lastActivity}
 
   //! redis
-
   const USER_SESSIONS_KEY = `user:${user.id}:sessions`;
   const SESSION_KEY = `session:${sessionId}`;
 
@@ -111,6 +117,7 @@ export const logoutUser = async (req: Request) => {
       }
     }
   }
+
   return { success: true, message: "Logged out successfully" };
 };
 
@@ -195,8 +202,6 @@ export const getUserSessions = async (userId: string) => {
       });
     }
   }
-
   console.log("All user session - ", sessions);
-
   return sessions;
 };
