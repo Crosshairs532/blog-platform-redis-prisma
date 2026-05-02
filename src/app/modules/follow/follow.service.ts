@@ -44,11 +44,13 @@ export const followUser = async (followerId: String, followingId: String) => {
   if (followerId === followingId) {
     throw new Error("You cannot follow yourself");
   }
+  // followerId : current User
+  // followingId : the person i am going to follow
 
   await prisma.follow.create({
     data: {
-      followerId,
-      followingId,
+      followerId: followerId as string,
+      followingId: followingId as string,
     },
   });
 
@@ -62,8 +64,8 @@ export const unfollowUser = async (followerId: String, followingId: String) => {
   await prisma.follow.delete({
     where: {
       followerId_followingId: {
-        followerId,
-        followingId,
+        followerId: followerId as string,
+        followingId: followingId as string,
       },
     },
   });
