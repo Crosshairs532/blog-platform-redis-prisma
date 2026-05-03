@@ -1,11 +1,28 @@
-import { prisma } from "../../../config/db";
-import { invalidateUserCache, userService } from "./user.service";
+import { userService } from "./user.service";
 import type { NextFunction, Request, Response } from "express";
+const getAllUsersController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const users = await userService.getAllUsers(req.user?.userId as string);
+    res.status(200).json({
+      success: true,
+      data: users,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const getProfile = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { userId } = req.params;
+    
     const loggedInUserId = req.user?.userId;
 
+    console.log({ userId }, {loggedInUserId});
     const profile = await userService.getUserProfile(
       userId as string,
       loggedInUserId as string,
@@ -64,6 +81,7 @@ const updateProfileService = async (
 };
 
 export const userController = {
+  getAllUsersController,
   getProfile,
   getUserPostsController,
   updateProfileService,

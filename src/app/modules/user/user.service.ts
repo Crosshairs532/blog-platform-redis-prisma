@@ -3,6 +3,27 @@ import { getRedisClient } from "../../../config/redis";
 import { AppError } from "../../../utils/ AppError";
 import { RedisKeys } from "../../../utils/redisKeys";
 
+const getAllUsers = async (id: string) => {
+  const users = await prisma.user.findMany({
+    where: {
+      id: {
+        not: id, // exclude current user
+      },
+    },
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      bio: true,
+      createdAt: true,
+      _count: {
+        select: { followers: true, following: true, posts: true },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  return users;
+};
 const getUserProfile = async (
   targetUserId: string,
   loggedInUserId?: string,
@@ -11,7 +32,7 @@ const getUserProfile = async (
   const cacheKey = RedisKeys.userProfile(targetUserId);
 
   try {
-    // Try cache first
+    // cache first
     const cached = await redisClient.get(cacheKey);
     if (cached) {
       return JSON.parse(cached);
@@ -29,6 +50,15 @@ const getUserProfile = async (
       bio: true,
       createdAt: true,
       email: true,
+      posts: {
+        select: {
+          id: true,
+          content: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 3,
+      },
     },
   });
   const TargetUserFollowingIds = await prisma.follow.count({
@@ -62,7 +92,7 @@ const getUserProfile = async (
   if (!user) {
     throw new AppError("User not found", 404);
   }
-
+  console.log({ user });
   const profile = {
     user: {
       id: user.id,
@@ -73,6 +103,7 @@ const getUserProfile = async (
       followingCount,
       postCount,
       isFollowedByLoggedInUser: (isFollowed as any) > 0,
+      posts: user?.posts,
     },
   };
 
@@ -94,7 +125,6 @@ export const getUserPosts = async (
   const offset = page * limit;
 
   try {
-    // Try cache for paginated posts
     const cached = await redisClient.get(cacheKey);
     if (cached) {
       return JSON.parse(cached);
@@ -109,8 +139,8 @@ export const getUserPosts = async (
   });
 
   /*
-    get user posts
-    user details 
+    get target user posts
+    targetUser details 
     comments -- comment user id
   */
   const posts = await prisma.post.findMany({
@@ -140,12 +170,11 @@ export const getUserPosts = async (
       },
     },
     orderBy: { createdAt: "desc" },
-    skip: offset,
-    take: limit,
+    // skip: offset,
+    // take: limit,
   });
 
   // get my reposts from the targeted users posts.
-
   const postIds = posts.map((p) => p.id);
   const repostedPosts = await prisma.repost.findMany({
     where: {
@@ -155,7 +184,7 @@ export const getUserPosts = async (
     select: { postId: true },
   });
 
-  const repostedSet = new Set(repostedPosts.map((r) => r.postId));
+  const repostedSet = new Set(repostedPosts.map((r) => r.postId)); // unique  reposted posts
 
   const postsWithStatus = posts.map((post) => ({
     ...post,
@@ -200,6 +229,8 @@ export const updateUserService = async (userId: string, userData: any) => {
 export const invalidateUserCache = async (userId: string) => {
   const redisClient = getRedisClient();
   const profileKey = RedisKeys.userProfile(userId);
+
+  // in posts user details has been retrieved
   const pattern = RedisKeys.userPosts(userId, 0);
 
   await redisClient.del(profileKey);
@@ -207,6 +238,7 @@ export const invalidateUserCache = async (userId: string) => {
 };
 
 export const userService = {
+  getAllUsers,
   getUserProfile,
   getUserPosts,
   updateUserService,

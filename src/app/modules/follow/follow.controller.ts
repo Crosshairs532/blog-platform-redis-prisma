@@ -13,6 +13,7 @@ export const follow = async (req: Request, res: Response) => {
 
     // the userId who is going to be followed
     const { userId } = req.params;
+    console.log({ userId });
 
     const result = await followUser(followerId as string, userId as string);
 
