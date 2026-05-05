@@ -1,13 +1,14 @@
 import jwt from "jsonwebtoken";
-import { getRedisClient } from "../config/redis";
+// import { getRedisClient } from "../config/redis";
 import type { Request, Response, NextFunction } from "express";
+import { getRedis } from "../config/redis";
 
 export const authMiddleware = async (
   req: Request,
   res: Response,
   next: NextFunction,
 ) => {
-  const redis = getRedisClient();
+  const redis = (await getRedis()).getClient();
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) {
     return res

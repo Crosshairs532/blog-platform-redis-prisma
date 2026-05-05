@@ -1,6 +1,11 @@
 import express from "express";
 import router from "./router/route";
-import { connectRedis } from "./config/redis";
+import {
+  // connectRedis,
+  getRedis,
+  // getRedisClient,
+  RedisClient,
+} from "./config/redis";
 import http from "http";
 import cors from "cors";
 import { Server } from "socket.io";
@@ -23,7 +28,7 @@ app.use(
   }),
 );
 
-connectRedis();
+getRedis();
 startWorker();
 
 app.use("/api", router);

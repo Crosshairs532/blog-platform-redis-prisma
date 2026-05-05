@@ -1,5 +1,6 @@
+import { getRedis, RedisClient } from "./../../../config/redis";
 import { prisma } from "../../../config/db";
-import { getRedisClient } from "../../../config/redis";
+// import { getRedisClient } from "../../../config/redis";
 import { RedisKeys } from "../../../utils/redisKeys";
 import { createNotification } from "../notification/notification.service";
 
@@ -9,7 +10,7 @@ import { createNotification } from "../notification/notification.service";
 // fan-out - write
 
 export const createPost = async (userId: string, content: string) => {
-  const redisClient = await getRedisClient();
+  const redisClient = (await getRedis()).getClient();
   const post = await prisma.post.create({
     data: { userId, content },
   });
@@ -75,7 +76,7 @@ export const createPost = async (userId: string, content: string) => {
 };
 
 export const getFeed = async (userId: string, page = 0, limit = 10) => {
-  const redisClient = await getRedisClient();
+  const redisClient = (await getRedis()).getClient();
   const start = page * limit;
   const end = start + limit - 1;
 
@@ -130,7 +131,7 @@ export const getFeed = async (userId: string, page = 0, limit = 10) => {
 };
 
 export const createRepost = async (userId: string, postId: string) => {
-  const redisClient = await getRedisClient();
+  const redisClient = (await getRedis()).getClient();
   const repost = await prisma.repost.create({
     data: { userId, postId },
   });

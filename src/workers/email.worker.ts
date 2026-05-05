@@ -1,9 +1,10 @@
 import { newPostTemplate } from "../app/modules/notification/emailTemplate";
 import { sendEmail } from "../app/modules/notification/queue.service";
 import { prisma } from "../config/db";
-import { getRedisClient } from "../config/redis";
+// import { getRedisClient } from "../config/redis";
 import pLimit from "p-limit";
 import { AppError } from "../utils/ AppError";
+import { getRedis } from "../config/redis";
 
 const limit = pLimit(5);
 let isShuttingDown = false;
@@ -39,7 +40,7 @@ const processEmailJob = async (job: any) => {
 
 export const startWorker = async () => {
   console.log("Email worker running....");
-  const redis = getRedisClient();
+  const redis = (await getRedis()).getClient();
   try {
     while (true) {
       if (isShuttingDown) break;

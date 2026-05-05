@@ -1,5 +1,6 @@
 import { prisma } from "../../../config/db";
-import { getRedisClient } from "../../../config/redis";
+import { getRedis } from "../../../config/redis";
+// import { getRedisClient } from "../../../config/redis";
 import { AppError } from "../../../utils/ AppError";
 import { RedisKeys } from "../../../utils/redisKeys";
 
@@ -28,7 +29,7 @@ const getUserProfile = async (
   targetUserId: string,
   loggedInUserId?: string,
 ) => {
-  const redisClient = getRedisClient();
+  const redisClient = (await getRedis()).getClient();
   const cacheKey = RedisKeys.userProfile(targetUserId);
 
   try {
@@ -120,7 +121,7 @@ export const getUserPosts = async (
   page: number = 0,
   limit: number = 10,
 ) => {
-  const redisClient = getRedisClient();
+  const redisClient = (await getRedis()).getClient();
   const cacheKey = RedisKeys.userPosts(targetUserId, page);
   const offset = page * limit;
 
@@ -227,7 +228,7 @@ export const updateUserService = async (userId: string, userData: any) => {
   return updatedUser;
 };
 export const invalidateUserCache = async (userId: string) => {
-  const redisClient = getRedisClient();
+  const redisClient = (await getRedis()).getClient();
   const profileKey = RedisKeys.userProfile(userId);
 
   // in posts user details has been retrieved

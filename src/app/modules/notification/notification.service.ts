@@ -1,12 +1,13 @@
 import { prisma } from "../../../config/db";
-import { getRedisClient } from "../../../config/redis";
+import { getRedis } from "../../../config/redis";
+// import { getRedisClient } from "../../../config/redis";
 
 declare global {
   var io: any;
 }
 
 export const createNotification = async ({ userId, type, data }: any) => {
-  const redisClient = await getRedisClient();
+  const redisClient = (await getRedis()).getClient();
   const notification = await prisma.notification.create({
     data: {
       userId,
@@ -36,7 +37,7 @@ export const getNotifications = async (
   page = 0,
   limit = 20,
 ) => {
-  const redisClient = await getRedisClient();
+  const redisClient = (await getRedis()).getClient();
   const key = `notification:${userId}`;
   try {
     const cached = await redisClient.lRange(

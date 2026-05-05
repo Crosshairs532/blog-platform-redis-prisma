@@ -3,10 +3,11 @@ import { prisma } from "../../../config/db";
 import jwt, { type JwtPayload } from "jsonwebtoken";
 import { generateToken } from "../../../utils/jwt";
 import type { Request } from "express";
-import { getRedisClient } from "../../../config/redis";
+// import { getRedisClient } from "../../../config/redis";
 import { UAParser } from "ua-parser-js";
 import { handlePrismaError } from "../../../utils/PrismaError";
 import { AppError } from "../../../utils/ AppError";
+import { getRedis } from "../../../config/redis";
 
 export const registerUser = async ({ username, email, password }: any) => {
   try {
@@ -35,7 +36,7 @@ export const loginUser = async (req: any, { email, password }: any) => {
      6. generate a session ID 
   */
 
-  const redisClient: any = getRedisClient();
+  const redisClient: any = (await getRedis()).getClient();
 
   const user = await prisma.user.findUnique({
     where: { email },
@@ -139,7 +140,7 @@ const blacklistToken = async (redis: any, token: string) => {
 };
 
 export const logoutUser = async (req: Request) => {
-  const redis = getRedisClient();
+  const redis = (await getRedis()).getClient();
   try {
     const sessionId = req?.sessionId;
     const userId = req?.user?.userId;
@@ -161,7 +162,7 @@ export const logoutUser = async (req: Request) => {
 };
 
 export const logoutAllDevices = async (req: Request) => {
-  const redis = getRedisClient();
+  const redis = (await getRedis()).getClient();
   const userId = req?.user?.userId;
 
   console.log("logout userId: ", userId);
@@ -171,7 +172,7 @@ export const logoutAllDevices = async (req: Request) => {
   for (const sessionId of sessionIds) {
     const sessionData = await redis.hGetAll(`session:${sessionId}`);
     console.log("sessionData-Logout: ", sessionIds);
-    await blacklistToken(redis, sessionData.accessToken);
+    await blacklistToken(redis, sessionData?.accessToken as string);
     await redis.del(`session:${sessionId}`);
   }
 

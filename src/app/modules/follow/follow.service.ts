@@ -1,8 +1,9 @@
 import { prisma } from "../../../config/db";
-import { getRedisClient } from "../../../config/redis";
+import { getRedis } from "../../../config/redis";
+// import { getRedisClient } from "../../../config/redis";
 
 export const getFollowers = async (userId: string) => {
-  const redisClient = getRedisClient();
+  const redisClient = (await getRedis()).getClient();
   let followers = await redisClient.sMembers(`followers:${userId}`);
 
   console.log("Followers: ", followers);
@@ -22,7 +23,7 @@ export const getFollowers = async (userId: string) => {
   return followers;
 };
 export const getFollowing = async (userId: string) => {
-  const redisClient = getRedisClient();
+  const redisClient = (await getRedis()).getClient();
   let following = await redisClient.sMembers(`following:${userId}`);
   if (following.length === 0) {
     const data = await prisma.follow.findMany({
@@ -39,7 +40,7 @@ export const getFollowing = async (userId: string) => {
   return following;
 };
 export const followUser = async (followerId: String, followingId: String) => {
-  const redisClient = getRedisClient();
+  const redisClient = (await getRedis()).getClient();
 
   if (followerId === followingId) {
     throw new Error("You cannot follow yourself");
@@ -60,7 +61,7 @@ export const followUser = async (followerId: String, followingId: String) => {
   return { success: true };
 };
 export const unfollowUser = async (followerId: String, followingId: String) => {
-  const redisClient = getRedisClient();
+  const redisClient = (await getRedis()).getClient();
   await prisma.follow.delete({
     where: {
       followerId_followingId: {
