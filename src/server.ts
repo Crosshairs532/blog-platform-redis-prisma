@@ -15,6 +15,7 @@ const io = new Server(server, {
   },
 });
 global.io = io;
+
 app.use(express.json());
 app.use(
   cors({
@@ -22,12 +23,11 @@ app.use(
   }),
 );
 
-app.use("/api", router);
-
-app.use(globalErrorHandler);
-
 connectRedis();
 startWorker();
+
+app.use("/api", router);
+app.use(globalErrorHandler);
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);

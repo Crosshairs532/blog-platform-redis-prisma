@@ -10,16 +10,17 @@ let isShuttingDown = false;
 const inFlight = new Set<Promise<any>>();
 
 const processEmailJob = async (job: any) => {
-  const { toUserId, type, postId, userId } = job;
+  const { toUserId, type, postId, actorId } = job;
   const user = await prisma.user.findUnique({
     where: { id: toUserId },
   });
 
   if (!user) return;
   let emailData;
+  let actor;
   if (type === "NEW_POST") {
-    const actor = userId
-      ? await prisma.user.findUnique({ where: { id: userId } })
+    actor = actorId
+      ? await prisma.user.findUnique({ where: { id: actorId } })
       : null;
 
     emailData = newPostTemplate({
@@ -28,6 +29,7 @@ const processEmailJob = async (job: any) => {
     });
   }
   await sendEmail({
+    name: actor?.username,
     to: user.email,
     subject: emailData?.subject,
     html: emailData?.html,
@@ -36,6 +38,7 @@ const processEmailJob = async (job: any) => {
 };
 
 export const startWorker = async () => {
+  console.log("Email worker running....");
   const redis = getRedisClient();
   try {
     while (true) {
@@ -44,7 +47,9 @@ export const startWorker = async () => {
         const job = await redis.brPop("queue:email", 5);
         if (!job) continue;
 
-        const parsed = JSON.parse(job.element);
+        const parsed = JSON.parse(job?.element);
+
+        console.log("parsed from startWorker: ", parsed);
 
         // tracking how many times Email sending have been retired
         parsed.attempts = (parsed.attempts || 0) + 1;
@@ -67,6 +72,7 @@ export const startWorker = async () => {
       }
     }
   } catch (error) {
+    await new Promise((r) => setTimeout(r, 1000));
     throw new AppError(error?.message, 500);
   }
 };

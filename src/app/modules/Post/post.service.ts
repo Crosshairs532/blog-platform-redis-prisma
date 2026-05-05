@@ -1,11 +1,10 @@
 import { prisma } from "../../../config/db";
 import { getRedisClient } from "../../../config/redis";
+import { RedisKeys } from "../../../utils/redisKeys";
 import { createNotification } from "../notification/notification.service";
-import { pushEmailJob } from "../notification/queue.service";
 
-// post
-// middleware --> post create
-// use ----> single post, all post -- feed -- follow
+// post --> middleware --> post create
+// use  --> single post, all post -- feed -- follow
 //  post --> follower
 // fan-out - write
 
@@ -15,19 +14,22 @@ export const createPost = async (userId: string, content: string) => {
     data: { userId, content },
   });
 
-  // post:abjgajrbg#
-  const postKey = `post:${post.id}`;
+  const postKey = RedisKeys.post(post?.id);
   const timestamp = Date.now();
 
   await redisClient.set(postKey, JSON.stringify(post), {
     EX: 60,
   });
 
+  /*
+    after post creation we will notify followers
+  */
+
   // find user followers
   const followers = await redisClient.sMembers(`followers:${userId}`);
 
   // fan-out write to followers
-  followers.push(String(userId));
+  // followers.push(String(userId));
   console.log(" followers: ", followers);
 
   // transaction started
@@ -36,7 +38,7 @@ export const createPost = async (userId: string, content: string) => {
   // notification creation + email queue push
   const notificationPromises = followers.map(async (followerId: string) => {
     try {
-      pipeline.lPush(
+      await pipeline.lPush(
         "queue:email",
         JSON.stringify({
           toUserId: followerId,
@@ -48,11 +50,11 @@ export const createPost = async (userId: string, content: string) => {
 
       // create notification on DB
       // push on redis queue
-      await createNotification({
-        userId: followerId,
-        type: "POST_CREATED",
-        data: { actorId: userId, postId: post.id },
-      });
+      // await createNotification({
+      //   userId: followerId,
+      //   type: "POST_CREATED",
+      //   data: { actorId: userId, postId: post.id },
+      // });
     } catch (err) {
       console.error(`Failed to notify follower ${followerId}:`, err);
     }
@@ -61,12 +63,12 @@ export const createPost = async (userId: string, content: string) => {
   await Promise.allSettled(notificationPromises);
 
   // follower feed update
-  for (const followerId of followers) {
-    pipeline.zAdd(`feed:${followerId}`, {
-      score: timestamp,
-      value: `post:${post.id}`,
-    });
-  }
+  // for (const followerId of followers) {
+  //   pipeline.zAdd(`feed:${followerId}`, {
+  //     score: timestamp,
+  //     value: `post:${post.id}`,
+  //   });
+  // }
   await pipeline.exec();
 
   return post;

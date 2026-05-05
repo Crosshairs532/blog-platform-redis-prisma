@@ -58,7 +58,7 @@ export const loginUser = async (req: any, { email, password }: any) => {
   console.log({ JwtPayload });
 
   //* maximum Session Exceed Logic
-  const sessionIds = await redisClient.sMembers(`user:${user.id}:sessions`);
+  const sessionIds = await redisClient.sMembers(`user:${user?.id}:sessions`);
 
   const ua = new UAParser(req.headers["user-agent"]).getResult();
   const deviceName = `${ua.browser.name || "Unknown"} on ${ua.os.name || "Unknown"}`;
@@ -89,7 +89,7 @@ export const loginUser = async (req: any, { email, password }: any) => {
     throw new Error("Maximum login sessions exceeded");
   }
 
-  const accessToken = generateToken(JwtPayload, "20m");
+  const accessToken = generateToken(JwtPayload, "1h");
   const refreshToken = generateToken(JwtPayload, "7d");
 
   const sessionData = {

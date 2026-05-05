@@ -17,25 +17,31 @@ const getTransporter = () => {
   return transporter;
 };
 
-export const sendEmail = async ({ to, subject, html, text }: any) => {
+export const sendEmail = async ({ name, to, subject, html, text }: any) => {
   try {
-    await getTransporter().sendMail({
-      from: process.env.EMAIL_FROM,
+    const transporter = await getTransporter();
+    const info = await transporter.sendMail({
+      from: `"${name} via YourApp" <${process.env.EMAIL_FROM}>`,
       to,
       subject,
       html,
       text,
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error(`Email failed to ${to}:`, err);
-    throw err;
+    switch (err.code) {
+      case "ECONNECTION":
+      case "ETIMEDOUT":
+        console.error("Network error - retry later:", err.message);
+        break;
+      case "EAUTH":
+        console.error("Authentication failed:", err.message);
+        break;
+      case "EENVELOPE":
+        console.error("Invalid recipients:", err.rejected);
+        break;
+      default:
+        console.error("Send failed:", err.message);
+    }
   }
-};
-
-export const pushEmailJob = async (job: any) => {
-  if (!job.toUserId || !job.type || !job.postId) {
-    throw new Error("Invalid email job payload");
-  }
-  const redisClient = await getRedisClient();
-  await redisClient.lPush("queue:email", JSON.stringify(job));
 };

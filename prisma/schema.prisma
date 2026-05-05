@@ -22,7 +22,7 @@ model User {
   posts         Post[]
   reposts       Repost[]
 
-  @@index([username])
+  @@index([email])
 }
 
 model Follow {
