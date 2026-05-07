@@ -1,6 +1,5 @@
 import { prisma } from "../../../config/db";
 import { getRedis } from "../../../config/redis";
-// import { getRedisClient } from "../../../config/redis";
 
 declare global {
   var io: any;

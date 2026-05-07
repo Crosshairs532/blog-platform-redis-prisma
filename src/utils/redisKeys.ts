@@ -4,14 +4,12 @@ export const RedisKeys = {
   blacklist: (token: string) => `blacklist:${token}`,
   followers: (userId: string) => `followers:${userId}`,
   following: (userId: string) => `following:${userId}`,
-  userProfile: (userId: string) => `profile:${userId}`,
-  userPosts: (userId: string, page: number) => `user:${userId}:posts`,
+  userProfile: (userId: string) => `user:${userId}:profile`,
+  userPosts: (userId: string, page: number) => `user:${userId}:posts:${page}`,
   userPostCount: (userId: string) => `user:${userId}:post:count`,
   post: (postId: string) => `post:${postId}`,
   feed: (userId: string) => `feed:${userId}`,
   notifications: (userId: string) => `notifications:${userId}`,
-  // usersPage: (limit: number, cursorId: string) =>
-  //   `users:cursor:${cursorId}:limit:${limit}`,
-  usersPage: (limit: number, page: number) =>
+  usersPage: (page: number, limit: number) =>
     `users:page:${page}:limit:${limit}`,
 } as const;

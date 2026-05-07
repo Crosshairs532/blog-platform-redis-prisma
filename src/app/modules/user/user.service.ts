@@ -65,88 +65,60 @@ const getUserProfile = async (
   const cacheKey = RedisKeys.userProfile(targetUserId);
 
   try {
-    // cache first
     const cached = await redisClient.get(cacheKey);
-    if (cached) {
-      return JSON.parse(cached);
-    }
+    if (cached) return JSON.parse(cached);
+
+    const [user, followerCount, followingCount, postCount, isFollowed] =
+      await Promise.all([
+        prisma.user.findUnique({
+          where: { id: targetUserId },
+          select: {
+            id: true,
+            username: true,
+            bio: true,
+            createdAt: true,
+            email: true,
+            posts: {
+              select: { id: true, content: true, createdAt: true },
+              orderBy: { createdAt: "desc" },
+              take: 3,
+            },
+          },
+        }),
+        prisma.follow.count({ where: { followingId: targetUserId } }),
+        prisma.follow.count({ where: { followerId: targetUserId } }),
+        prisma.post.count({ where: { userId: targetUserId } }),
+        loggedInUserId
+          ? prisma.follow.count({
+              where: { followerId: loggedInUserId, followingId: targetUserId },
+            })
+          : 0,
+      ]);
+
+    if (!user) throw new AppError("User not found", 404);
+
+    const profile = {
+      user: {
+        id: user.id,
+        username: user.username,
+        bio: user.bio,
+        createdAt: user.createdAt,
+        email: user.email,
+        followerCount,
+        followingCount,
+        postCount,
+        isFollowedByLoggedInUser: isFollowed > 0,
+        posts: user.posts,
+      },
+    };
+
+    await redisClient.set(cacheKey, JSON.stringify(profile), { EX: 300 });
+
+    return profile;
   } catch (error) {
     throw new AppError("Something went wrong while getting user profile!", 500);
   }
-
-  // DB Read
-  const TargetUserProfile = await prisma.user.findUnique({
-    where: { id: targetUserId },
-    select: {
-      id: true,
-      username: true,
-      bio: true,
-      createdAt: true,
-      email: true,
-      posts: {
-        select: {
-          id: true,
-          content: true,
-          createdAt: true,
-        },
-        orderBy: { createdAt: "desc" },
-        take: 3,
-      },
-    },
-  });
-  const TargetUserFollowingIds = await prisma.follow.count({
-    where: { followingId: targetUserId },
-  });
-  const TargetUserFollowerIds = await prisma.follow.count({
-    where: { followerId: targetUserId },
-  });
-  const TargetUserPosts = await prisma.post.count({
-    where: { userId: targetUserId },
-  });
-
-  const isCurrentUserFollowTargetUserId =
-    loggedInUserId &&
-    (await prisma.follow.count({
-      where: {
-        followerId: loggedInUserId,
-        followingId: targetUserId,
-      },
-    }));
-
-  const [user, followerCount, followingCount, postCount, isFollowed] =
-    await Promise.all([
-      TargetUserProfile,
-      TargetUserFollowingIds,
-      TargetUserFollowerIds,
-      TargetUserPosts,
-      isCurrentUserFollowTargetUserId,
-    ]);
-
-  if (!user) {
-    throw new AppError("User not found", 404);
-  }
-  console.log({ user });
-  const profile = {
-    user: {
-      id: user.id,
-      username: user.username,
-      bio: user.bio,
-      createdAt: user.createdAt,
-      followerCount,
-      followingCount,
-      postCount,
-      isFollowedByLoggedInUser: (isFollowed as any) > 0,
-      posts: user?.posts,
-    },
-  };
-
-  // cache the profile
-  await redisClient.set(cacheKey, JSON.stringify(profile), {
-    EX: 300,
-  });
-  return profile;
 };
-
 export const getUserPosts = async (
   targetUserId: string,
   loggedInUserId: string,
@@ -256,18 +228,30 @@ export const updateUserService = async (userId: string, userData: any) => {
 
   // Invalidate cache AFTER DB update
   await invalidateUserCache(userId);
-
   return updatedUser;
 };
 export const invalidateUserCache = async (userId: string) => {
   const redisClient = (await getRedis()).getClient();
-  const profileKey = RedisKeys.userProfile(userId);
 
-  // in posts user details has been retrieved
-  const pattern = RedisKeys.userPosts(userId, 0);
+  const pipeline = redisClient.multi();
+  pipeline.del(RedisKeys.userProfile(userId));
 
-  await redisClient.del(profileKey);
-  await redisClient.del(pattern);
+  const stream = redisClient.scanIterator({
+    MATCH: `user:${userId}:posts:*`,
+    COUNT: 100,
+  });
+  for await (const key of stream) {
+    pipeline.del(key);
+  }
+  const userListStream = redisClient.scanIterator({
+    MATCH: "users:page:*",
+    COUNT: 100,
+  });
+  for await (const key of userListStream) {
+    pipeline.del(key);
+  }
+
+  await pipeline.exec();
 };
 
 export const userService = {
