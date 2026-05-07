@@ -4,8 +4,8 @@ import type { RedisClientType } from "redis";
 // let client: any;
 
 export class RedisClient {
-  private static instance: RedisClient;
-  private client: RedisClientType;
+  private static instance: any;
+  private client: any;
   constructor() {
     this.client = createClient({
       url: process.env.REDIS_URL as string,
@@ -13,19 +13,14 @@ export class RedisClient {
     this.client.on("error", (err: any) => console.error("Redis Error:", err));
     this.client.on("connect", () => console.log("Redis Connected"));
   }
-  public static getInstance(): RedisClient {
+  public static async getInstance(): Promise<RedisClient> {
     if (!RedisClient.instance) {
       RedisClient.instance = new RedisClient();
+      await RedisClient.instance.client.connect();
     }
     return RedisClient.instance;
   }
 
-  public async connect() {
-    if (!this.client.isOpen) {
-      await this.client.connect();
-      console.log("Redis Connected");
-    }
-  }
   public getClient(): RedisClientType {
     return this.client;
   }
@@ -53,6 +48,5 @@ export class RedisClient {
 // export { connectRedis, getRedisClient };
 export const getRedis = async () => {
   const redis = RedisClient.getInstance();
-  await redis.connect();
   return redis;
 };

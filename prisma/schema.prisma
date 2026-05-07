@@ -23,6 +23,7 @@ model User {
   reposts       Repost[]
 
   @@index([email])
+  @@index([createdAt(sort: Desc)]) 
 }
 
 model Follow {

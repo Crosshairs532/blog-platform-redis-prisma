@@ -4,27 +4,59 @@ import { getRedis } from "../../../config/redis";
 import { AppError } from "../../../utils/ AppError";
 import { RedisKeys } from "../../../utils/redisKeys";
 
-const getAllUsers = async (id: string) => {
-  const users = await prisma.user.findMany({
-    where: {
-      id: {
-        not: id, // exclude current user
+const getAllUsers = async (
+  id: string,
+  limit: number = 10,
+  page: number = 2,
+) => {
+  const redisClient = (await getRedis()).getClient();
+  const cacheKey = `users:page:${page}:limit:${limit}`;
+
+  try {
+    // cache read
+    console.time("redisGet");
+    const cached = await redisClient.get(cacheKey);
+
+    if (cached) {
+      console.timeEnd("redisGet");
+      return JSON.parse(cached);
+    }
+
+    // db fallback
+    console.time("db");
+    const users = await prisma.user.findMany({
+      take: Number(limit),
+      skip: (Number(page) - 1) * Number(limit),
+      where: { id: { not: id } },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        bio: true,
+        createdAt: true,
+        _count: { select: { followers: true, following: true, posts: true } },
       },
-    },
-    select: {
-      id: true,
-      username: true,
-      email: true,
-      bio: true,
-      createdAt: true,
-      _count: {
-        select: { followers: true, following: true, posts: true },
-      },
-    },
-    orderBy: { createdAt: "desc" },
-  });
-  return users;
+      orderBy: { createdAt: "desc" },
+    });
+    console.timeEnd("db");
+
+    // cache write
+    console.time("stringify");
+    const stringUsers = JSON.stringify(users);
+    console.timeEnd("stringify");
+    console.time("redisSet");
+    await redisClient.set(cacheKey, stringUsers, {
+      EX: 60 * 5,
+    });
+    console.timeEnd("redisSet");
+
+    return { data: users, page };
+  } catch (error) {
+    console.error(error);
+    throw new AppError("Something went wrong while fetching users!", 500);
+  }
 };
+
 const getUserProfile = async (
   targetUserId: string,
   loggedInUserId?: string,

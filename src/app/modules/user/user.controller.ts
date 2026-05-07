@@ -5,8 +5,18 @@ const getAllUsersController = async (
   res: Response,
   next: NextFunction,
 ) => {
+  console.time("Query");
+  const { limit, page } = req.query;
+  console.timeEnd("Query");
+
+  console.log(limit, page);
+
   try {
-    const users = await userService.getAllUsers(req.user?.userId as string);
+    const users = await userService.getAllUsers(
+      req.user?.userId as string,
+      limit as number | undefined,
+      page as number | undefined,
+    );
     res.status(200).json({
       success: true,
       data: users,
@@ -19,10 +29,10 @@ const getAllUsersController = async (
 const getProfile = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { userId } = req.params;
-    
+
     const loggedInUserId = req.user?.userId;
 
-    console.log({ userId }, {loggedInUserId});
+    console.log({ userId }, { loggedInUserId });
     const profile = await userService.getUserProfile(
       userId as string,
       loggedInUserId as string,

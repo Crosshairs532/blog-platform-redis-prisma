@@ -28,7 +28,7 @@ app.use(
   }),
 );
 
-getRedis();
+const redis = await getRedis();
 startWorker();
 
 app.use("/api", router);

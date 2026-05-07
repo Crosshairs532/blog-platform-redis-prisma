@@ -10,4 +10,8 @@ export const RedisKeys = {
   post: (postId: string) => `post:${postId}`,
   feed: (userId: string) => `feed:${userId}`,
   notifications: (userId: string) => `notifications:${userId}`,
+  // usersPage: (limit: number, cursorId: string) =>
+  //   `users:cursor:${cursorId}:limit:${limit}`,
+  usersPage: (limit: number, page: number) =>
+    `users:page:${page}:limit:${limit}`,
 } as const;
