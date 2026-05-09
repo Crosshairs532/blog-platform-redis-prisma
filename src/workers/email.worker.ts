@@ -74,6 +74,7 @@ export const startWorker = async () => {
     }
   } catch (error) {
     await new Promise((r) => setTimeout(r, 1000));
+    console.error("main Branch: ", error);
     throw new AppError(error?.message, 500);
   }
 };
