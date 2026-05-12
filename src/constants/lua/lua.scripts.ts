@@ -4,10 +4,8 @@ local user_id = ARGV[1]
 local session_id = ARGV[2]
 local device_info = ARGV[3]
 local ip_address = ARGV[4]
-local access_token = ARGV[5]
-local refresh_token = ARGV[6]
-local email = ARGV[7]
-local max_sessions = tonumber(ARGV[8])
+local email = ARGV[5]
+local max_sessions = tonumber(ARGV[6])
 
 -- Get all existing session IDs
 local session_ids = redis.call('SMEMBERS', user_sessions_key)
@@ -59,7 +57,7 @@ redis.call('HSET', session_hash_key,
     'lastActivity', now_ms,
     'isActive', 'true'
 )
-redis.call('EXPIRE', session_hash_key, 604800) -- 7 days
+redis.call('EXPIRE', session_hash_key, 3600) -- 7 days
 
 -- Add new session ID to user's session set
 redis.call('SADD', user_sessions_key, session_id)

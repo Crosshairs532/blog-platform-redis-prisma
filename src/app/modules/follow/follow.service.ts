@@ -55,8 +55,8 @@ export const followUser = async (followerId: String, followingId: String) => {
     },
   });
 
-  await redisClient.sAdd(`followers:${followingId}`, followerId);
-  await redisClient.sAdd(`following:${followerId}`, followingId);
+  await redisClient.sAdd(`followers:${followingId}`, followerId as string);
+  await redisClient.sAdd(`following:${followerId}`, followingId as string);
 
   return { success: true };
 };

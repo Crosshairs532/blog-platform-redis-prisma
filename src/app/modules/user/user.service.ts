@@ -1,4 +1,5 @@
 import { prisma } from "../../../config/db";
+import { rabbitMQ } from "../../../config/rabbitmq";
 import { getRedis } from "../../../config/redis";
 // import { getRedisClient } from "../../../config/redis";
 import { AppError } from "../../../utils/ AppError";
@@ -7,19 +8,18 @@ import { RedisKeys } from "../../../utils/redisKeys";
 const getAllUsers = async (
   id: string,
   limit: number = 10,
-  page: number = 2,
+  page: number = 1,
 ) => {
   const redisClient = (await getRedis()).getClient();
-  const cacheKey = `users:page:${page}:limit:${limit}`;
-
+  const cacheKey = `users:${id}:page:${page}:limit:${limit}`;
   try {
     // cache read
     console.time("redisGet");
     const cached = await redisClient.get(cacheKey);
-
     if (cached) {
       console.timeEnd("redisGet");
-      return JSON.parse(cached);
+      console.log(cached);
+      return { data: JSON.parse(cached), page };
     }
 
     // db fallback
@@ -45,11 +45,13 @@ const getAllUsers = async (
     const stringUsers = JSON.stringify(users);
     console.timeEnd("stringify");
     console.time("redisSet");
-    await redisClient.set(cacheKey, stringUsers, {
+    const setResult = await redisClient.set(cacheKey, stringUsers, {
       EX: 60 * 5,
     });
     console.timeEnd("redisSet");
+    console.log("Redis set result:", setResult);
 
+    console.log("users", { data: users, page });
     return { data: users, page };
   } catch (error) {
     console.error(error);
@@ -209,6 +211,7 @@ export const getUserPosts = async (
 
 export const updateUserService = async (userId: string, userData: any) => {
   const { username, bio } = userData;
+  const channel = rabbitMQ.getChannel();
 
   const updatedUser = await prisma.user.update({
     where: { id: userId },
@@ -227,30 +230,60 @@ export const updateUserService = async (userId: string, userData: any) => {
   });
 
   // Invalidate cache AFTER DB update
-  await invalidateUserCache(userId);
+  channel.sendToQueue(
+    "cache_invalidation",
+    Buffer.from(
+      JSON.stringify({
+        type: "USER_PROFILE",
+        id: userId,
+      }),
+    ),
+  );
+
   return updatedUser;
 };
+
+//! Previous Invalidation Code -- O(N) --> Not optimized
+// export const invalidateUserCache = async (userId: string) => {
+//   const redisClient = (await getRedis()).getClient();
+//   const pipeline = redisClient.multi();
+//   pipeline.del(RedisKeys.userProfile(userId));
+
+//   const stream = redisClient.scanIterator({
+//     MATCH: `user:${userId}:posts:*`,
+//     COUNT: 100,
+//   });
+//   for await (const key of stream) {
+//     pipeline.del(key);
+//   }
+//   const userListStream = redisClient.scanIterator({
+//     MATCH: "users:page:*",
+//     COUNT: 100,
+//   });
+//   for await (const key of userListStream) {
+//     pipeline.del(key);
+//   }
+//   await pipeline.exec();
+// };
+
+/*
+ *  Current Invalidation Strategy -- O(1)
+ */
 export const invalidateUserCache = async (userId: string) => {
   const redisClient = (await getRedis()).getClient();
-
   const pipeline = redisClient.multi();
+  /*
+      delete the userProfile
+        - it holds all the user details, including posts
+    */
   pipeline.del(RedisKeys.userProfile(userId));
 
-  const stream = redisClient.scanIterator({
-    MATCH: `user:${userId}:posts:*`,
-    COUNT: 100,
-  });
-  for await (const key of stream) {
-    pipeline.del(key);
-  }
-  const userListStream = redisClient.scanIterator({
-    MATCH: "users:page:*",
-    COUNT: 100,
-  });
-  for await (const key of userListStream) {
-    pipeline.del(key);
-  }
-
+  /*
+      increment the global:users_list_version
+        - it is used to invalidate the usersPage cache
+        - it holds the list of all users
+    */
+  pipeline.incr("global:users_list_version");
   await pipeline.exec();
 };
 

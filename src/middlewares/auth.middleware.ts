@@ -19,8 +19,6 @@ export const authMiddleware = async (
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as any;
     const sessionExists = await redis.exists(`session:${decoded.sessionId}`);
-    // console.log(decoded, "authMiddleware");
-    // console.log({ sessionExists }, "lol");
     if (!sessionExists) {
       return res
         .status(401)

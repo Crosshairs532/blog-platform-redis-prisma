@@ -11,9 +11,11 @@ const getAllUsersController = async (
 
   console.log(limit, page);
 
+  console.log(req.user, "req.user from getAllUser")
+
   try {
     const users = await userService.getAllUsers(
-      req.user?.userId as string,
+      req?.user?.userId as string,
       limit as number | undefined,
       page as number | undefined,
     );

@@ -10,7 +10,9 @@ import http from "http";
 import cors from "cors";
 import { Server } from "socket.io";
 import { globalErrorHandler } from "./middlewares/global.error";
-import { startWorker } from "./workers/email.worker";
+import { startEmailWorker } from "./workers/email.worker";
+import { startFanoutWorker } from "./workers/fanout.worker";
+import { startNotificationWorker } from "./workers/notification.worker";
 const app = express();
 const server = http.createServer(app);
 
@@ -28,9 +30,6 @@ app.use(
   }),
 );
 
-const redis = await getRedis();
-startWorker();
-
 app.use("/api", router);
 app.use(globalErrorHandler);
 
@@ -45,6 +44,9 @@ io.on("connection", (socket) => {
     console.log("Disconnected:", socket.id);
   });
 });
+startEmailWorker();
+startFanoutWorker();
+startNotificationWorker();
 
 server.listen(5000, () => {
   console.log("Server running on port 5000");
