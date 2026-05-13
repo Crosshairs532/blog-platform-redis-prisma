@@ -1,5 +1,6 @@
 import { rabbitMQ } from "../config/rabbitmq";
 import { getRedis } from "../config/redis";
+import { RedisKeys } from "../utils/redisKeys";
 
 export const startFanoutWorker = async () => {
   console.log("Fanout worker running....");
@@ -15,7 +16,7 @@ export const startFanoutWorker = async () => {
       let cursor = 0;
       do {
         const reply = await redis.sScan(
-          `followers:${authorId}`,
+          RedisKeys.followers(authorId),
           cursor as any,
           {
             COUNT: 1000,
@@ -25,9 +26,9 @@ export const startFanoutWorker = async () => {
         const followers = reply.members;
         const pipeline = redis.multi();
         for (const followerId of followers) {
-          const feedKey = `feed:${followerId}`;
+          const feedKey = RedisKeys.feed(followerId);
           pipeline.zAdd(feedKey, { score: timestamp, value: postId });
-          pipeline.zRemRangeByRank(feedKey, 0, -1000);
+          pipeline.zRemRangeByRank(feedKey, 0, -1001);
         }
         await pipeline.exec();
       } while (cursor !== 0);

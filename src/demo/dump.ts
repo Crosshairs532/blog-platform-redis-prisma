@@ -97,3 +97,59 @@
 //     user: { id: user.id, email: user.email, username: user.username },
 //   };
 // };
+
+// ######### Get Feed #############
+// export const getFeed = async (userId: string, page = 0, limit = 10) => {
+//   const redisClient = (await getRedis()).getClient();
+//   const start = page * limit;
+//   const end = start + limit - 1;
+
+//   // items = ["post:12", "post:9", ...]
+//   const items = await redisClient.zRange(`feed:${userId}`, start, end, {
+//     REV: true,
+//   });
+
+//   if (!items || items.length === 0) {
+//     return [];
+//   }
+//   console.log("items", userId, items);
+//   const cachedPosts = await redisClient.mGet(items);
+//   const posts: any[] = [];
+//   const missingPostIds: number[] = [];
+//   const missingIndices: number[] = [];
+
+//   console.log("cachedPosts", cachedPosts);
+//   console.log("missingPostIds", missingPostIds);
+//   cachedPosts.forEach((data, index) => {
+//     if (data) {
+//       posts[index] = JSON.parse(data);
+//     } else {
+//       // if you have the key but no value ,
+//       // it means the post was created but invalidated,
+//       // so we need to fetch it from the database
+//       const id = items[index].split(":")[1];
+//       missingPostIds.push(id);
+//       missingIndices.push(index);
+//     }
+//   });
+//   if (missingPostIds.length > 0) {
+//     const dbPosts = await prisma.post.findMany({
+//       where: { id: { in: missingPostIds } },
+//       include: {
+//         user: true,
+//         comments: true,
+//       },
+//     });
+
+//     for (const dbPost of dbPosts) {
+//       const key = `post:${dbPost.id}`;
+//       await redisClient.set(key, JSON.stringify(dbPost), { EX: 60 });
+
+//       const originalIndex = missingPostIds.indexOf(dbPost?.id);
+//       const targetIndex = missingIndices[originalIndex];
+//       posts[targetIndex] = dbPost;
+//     }
+//   }
+
+//   return posts.filter((post) => post !== undefined);
+// };

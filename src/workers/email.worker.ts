@@ -72,7 +72,7 @@ export const startEmailWorker = async () => {
         await new Promise((r) => setTimeout(error, 1000));
       }
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error(error);
     console.log("New Dev-1-2");
     await new Promise((r) => setTimeout(r, 1000));

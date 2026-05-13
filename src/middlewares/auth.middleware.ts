@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 // import { getRedisClient } from "../config/redis";
 import type { Request, Response, NextFunction } from "express";
 import { getRedis } from "../config/redis";
+import { RedisKeys } from "../utils/redisKeys";
 
 export const authMiddleware = async (
   req: Request,
@@ -18,35 +19,18 @@ export const authMiddleware = async (
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as any;
-    const sessionExists = await redis.exists(`session:${decoded.sessionId}`);
-    if (!sessionExists) {
-      return res
-        .status(401)
-        .json({ error: "Session expired. Please login again." });
+    const sessionKey = RedisKeys.session(decoded.sessionId);
+    const [sessionExists, isActive] = await Promise.all([
+      redis.exists(sessionKey),
+      redis.hGet(sessionKey, "isActive"),
+    ]);
+
+    if (!sessionExists || isActive === "false") {
+      return res.status(401).json({ error: "Session expired or deactivated" });
     }
-
-    //! check if token has been compromised
-    // console.log("decoded.sessionId - ", decoded?.sessionId);
-    const isActive = await redis.hGet(
-      `session:${decoded?.sessionId}`,
-      "isActive",
-    );
-    // console.log({ isActive }, "kire");
-    if (isActive === "false") {
-      return res.status(401).json({ error: "Session deactivated" });
-    }
-
-    await redis.hSet(
-      `session:${decoded.sessionId}`,
-      "lastActivity",
-      Date.now(),
-    );
-
-    // console.log({ decoded });
+    await redis.hSet(sessionKey, "lastActivity", Date.now().toString());
     req.user = decoded;
     req.sessionId = decoded.sessionId;
-
-    // console.log("Auth Middleware");
     next();
   } catch (error) {
     return res.status(401).json({ error: "Invalid token" });

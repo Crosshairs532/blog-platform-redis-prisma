@@ -9,6 +9,7 @@ import { handlePrismaError } from "../../../utils/PrismaError";
 import { AppError } from "../../../utils/ AppError";
 import { getRedis } from "../../../config/redis";
 import { LOGIN_LUA } from "../../../constants/lua/lua.scripts";
+import { RedisKeys } from "../../../utils/redisKeys";
 
 export const registerUser = async ({ username, email, password }: any) => {
   console.log({ username, email, password });
@@ -59,8 +60,18 @@ export const loginUser = async (req: any, { email, password }: any) => {
 
   //* Run Lua Script
   const result = await redisClient.eval(LOGIN_LUA, {
-    keys: [`user:${user.id}:sessions`, `session:${sessionId}`],
-    arguments: [user?.id, sessionId, deviceName, req.ip, user.email, "2"],
+    keys: [RedisKeys.userSessions(user.id), RedisKeys.session(sessionId)],
+    arguments: [
+      user?.id,
+      sessionId,
+      deviceName,
+      req.ip,
+      user.email,
+      "2",
+      accessToken,
+      refreshToken,
+      RedisKeys.sessionPrefix,
+    ],
   });
   if (result.err === "MAX_SESSIONS") {
     throw new Error("Maximum login sessions exceeded");
@@ -97,11 +108,10 @@ export const logoutUser = async (req: Request) => {
     console.log(userId, "logoutUser");
 
     if (!sessionId) throw new Error("No active session found");
+
     if (!userId) throw new Error("Unauthorized");
-    await redis.del(`session:${sessionId}`);
-    const allSessionIDs = await redis.sMembers(`user:${userId}:sessions`);
-    console.log({ allSessionIDs }, { sessionId });
-    await redis.sRem(`user:${userId}:sessions`, sessionId);
+    await redis.del(RedisKeys.session(sessionId));
+    await redis.sRem(RedisKeys.userSessions(userId), sessionId);
     const accessToken = req.headers.authorization?.split(" ")[1];
     await blacklistToken(redis, accessToken as string);
     return { success: true, message: "Logged out successfully" };

@@ -1,6 +1,7 @@
 import { prisma } from "../config/db";
 import { rabbitMQ } from "../config/rabbitmq";
 import { getRedis } from "../config/redis";
+import { Server } from "socket.io";
 
 export const startNotificationWorker = async () => {
   console.log("Notification worker running....");
@@ -24,7 +25,7 @@ export const startNotificationWorker = async () => {
       );
       await redisClient.lTrim(key, 0, 49);
       await redisClient.expire(key, 60 * 60 * 24 * 7);
-      global?.io?.to(`user:${userId}`).emit("notification", notification);
+      io.to(`user:${userId}`).emit("notification", notification);
       channel.ack(msg);
     } catch (error) {
       console.error("Notification side-effect failed:", error);
