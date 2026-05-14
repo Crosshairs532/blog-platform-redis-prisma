@@ -9,7 +9,6 @@ import {
 } from "./auth.service";
 
 export const register = async (req: Request, res: Response) => {
-
   try {
     const result = await registerUser(req.body);
     res.status(201).json(result);
@@ -56,10 +55,10 @@ export const refresh = async (req: Request, res: Response) => {
 };
 
 export const getSessions = async (req: Request, res: Response) => {
-  console.log("GetSession. ROute");
+  // console.log("GetSession. ROute");
   try {
     const sessions = await getUserSessions(req.user!.userId);
-    console.log("getSessions -- ", sessions);
+    // console.log("getSessions -- ", sessions);
     res.json({ sessions });
   } catch (error: any) {
     res.status(400).json({ error: error.message });

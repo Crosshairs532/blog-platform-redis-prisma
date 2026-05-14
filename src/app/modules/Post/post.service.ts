@@ -67,6 +67,7 @@ export const createPost = async (userId: string, content: string) => {
 };
 
 export const getFeed = async (userId: string, page = 0, limit = 20) => {
+  console.log("Feed called");
   const redis = (await getRedis()).getClient();
   const start = page * limit;
   const end = start + limit - 1;
@@ -94,10 +95,33 @@ export const getFeed = async (userId: string, page = 0, limit = 20) => {
   );
 
   if (allIds.length === 0) {
-    return [];
+    console.log("Dhukse ==================");
+    // db fallback
+    // following user post id
+    const currentUserFollowingIds = await redis.sMembers(
+      RedisKeys.following(userId),
+    );
+    console.log({ currentUserFollowingIds });
+
+    const dbFeed = await prisma.post.findMany({
+      where: {
+        userId: { in: currentUserFollowingIds },
+      },
+      orderBy: { createdAt: "desc" },
+      skip: start,
+      take: limit,
+      include: { user: { select: { username: true } } },
+    });
+
+    // cache posts
+    const pipe = redis.multi();
+    dbFeed.forEach((p) =>
+      pipe.set(`post:${p.id}`, JSON.stringify(p), { EX: 3600 }),
+    );
+    await pipe.exec();
+    return dbFeed;
   }
   const cachedPosts = await redis.mGet(allIds.map((id: any) => `post:${id}`));
-
   const posts: any[] = [];
   const missingIds: string[] = [];
 
@@ -105,6 +129,8 @@ export const getFeed = async (userId: string, page = 0, limit = 20) => {
     if (data) posts.push(JSON.parse(data));
     else missingIds.push(allIds[index]);
   });
+
+  console.log(missingIds, "missingIds");
 
   //  Database Fallback (Batch Fetch)
   if (missingIds.length > 0) {

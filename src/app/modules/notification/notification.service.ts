@@ -4,32 +4,6 @@ import { getRedis } from "../../../config/redis";
 declare global {
   var io: any;
 }
-//! previous Notifucation logic
-// export const createNotification = async ({ userId, type, data }: any) => {
-//   const redisClient = (await getRedis()).getClient();
-//   const notification = await prisma.notification.create({
-//     data: {
-//       userId,
-//       type,
-//       data,
-//     },
-//   });
-
-//   try {
-//     const key = `notification:${userId}`;
-//     await redisClient.lPush(
-//       `notification:${userId}`,
-//       JSON.stringify(notification),
-//     );
-//     await redisClient.lTrim(key, 0, 49);
-//     await redisClient.expire(key, 60 * 60 * 24 * 7);
-//     global?.io?.to(`user:${userId}`).emit("notification", notification);
-//   } catch (error) {
-//     console.error("Notification side-effect failed:", error);
-//   }
-
-//   return notification;
-// };
 
 //* New notification logic - using rabbitMq
 export const createNotification = async ({ userId, type, data }: any) => {

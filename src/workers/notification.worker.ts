@@ -12,22 +12,29 @@ export const startNotificationWorker = async () => {
     if (!msg) return;
     const { userId, type, data } = JSON.parse(msg.content.toString());
 
+    const actor = await prisma.user.findUnique({
+      where: { id: data.actorId },
+    });
+
     const notification = await prisma.notification.create({
       data: { userId, type, data },
+      include: {},
     });
+    const notificationData = {
+      ...notification,
+      ...actor,
+    };
 
     try {
       const key = `notification:${userId}`;
       await redisClient.lPush(key, JSON.stringify(notification));
       await redisClient.lTrim(key, 0, 49);
 
-      // CRITICAL: রুমের নাম এবং ইভেন্ট নেম ফ্রন্টেন্ডের সাথে মিল থাকতে হবে
       const roomName = `user:${userId}`;
 
       console.log(`📡 Emitting notification to room: ${roomName}`);
 
-      global.io.to(roomName).emit("notification", notification);
-
+      global.io.to(roomName).emit("notification", notificationData);
       channel.ack(msg);
     } catch (error) {
       console.error("Notification emission failed:", error);

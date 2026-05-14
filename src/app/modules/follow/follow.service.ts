@@ -1,5 +1,6 @@
 import { prisma } from "../../../config/db";
 import { getRedis } from "../../../config/redis";
+import { AppError } from "../../../utils/ AppError";
 // import { getRedisClient } from "../../../config/redis";
 
 export const getFollowers = async (userId: string) => {
@@ -42,23 +43,29 @@ export const getFollowing = async (userId: string) => {
 export const followUser = async (followerId: String, followingId: String) => {
   const redisClient = (await getRedis()).getClient();
 
-  if (followerId === followingId) {
-    throw new Error("You cannot follow yourself");
+  try {
+    if (followerId === followingId) {
+      throw new Error("You cannot follow yourself");
+    }
+    // followerId : current User
+    // followingId : the person i am going to follow
+
+    console.log("Follow creating");
+    await prisma.follow.create({
+      data: {
+        followerId: followerId as string,
+        followingId: followingId as string,
+      },
+    });
+    console.log("Follow Created");
+
+    await redisClient.sAdd(`followers:${followingId}`, followerId as string);
+    await redisClient.sAdd(`following:${followerId}`, followingId as string);
+
+    return { success: true };
+  } catch (error) {
+    throw new AppError("Something went wrong", 500);
   }
-  // followerId : current User
-  // followingId : the person i am going to follow
-
-  await prisma.follow.create({
-    data: {
-      followerId: followerId as string,
-      followingId: followingId as string,
-    },
-  });
-
-  await redisClient.sAdd(`followers:${followingId}`, followerId as string);
-  await redisClient.sAdd(`following:${followerId}`, followingId as string);
-
-  return { success: true };
 };
 export const unfollowUser = async (followerId: String, followingId: String) => {
   const redisClient = (await getRedis()).getClient();

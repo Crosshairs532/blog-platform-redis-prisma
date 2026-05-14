@@ -13,8 +13,8 @@ export const follow = async (req: Request, res: Response) => {
 
     // the userId who is going to be followed
     const { userId } = req.params;
-    console.log({ userId });
-
+    // console.log({ userId });
+    console.log(followerId, userId);
     const result = await followUser(followerId as string, userId as string);
 
     res.json(result);
@@ -37,7 +37,7 @@ export const unfollow = async (req: Request, res: Response) => {
 };
 
 export const fetchFollower = async (req: Request, res: Response) => {
-  console.log("fetchFollower");
+  // console.log("fetchFollower");
   try {
     const result = await getFollowers(req?.user?.userId as string);
     res.status(200).json({

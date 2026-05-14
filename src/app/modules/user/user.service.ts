@@ -13,17 +13,10 @@ const getAllUsers = async (
   const redisClient = (await getRedis()).getClient();
   const cacheKey = `users:${id}:page:${page}:limit:${limit}`;
   try {
-    // cache read
-    console.time("redisGet");
     const cached = await redisClient.get(cacheKey);
     if (cached) {
-      console.timeEnd("redisGet");
-      console.log(cached);
       return { data: JSON.parse(cached), page };
     }
-
-    // db fallback
-    console.time("db");
     const users = await prisma.user.findMany({
       take: Number(limit),
       skip: (Number(page) - 1) * Number(limit),
@@ -38,20 +31,11 @@ const getAllUsers = async (
       },
       orderBy: { createdAt: "desc" },
     });
-    console.timeEnd("db");
-
-    // cache write
-    console.time("stringify");
     const stringUsers = JSON.stringify(users);
-    console.timeEnd("stringify");
-    console.time("redisSet");
+
     const setResult = await redisClient.set(cacheKey, stringUsers, {
       EX: 60 * 5,
     });
-    console.timeEnd("redisSet");
-    console.log("Redis set result:", setResult);
-
-    console.log("users", { data: users, page });
     return { data: users, page };
   } catch (error) {
     console.error(error);

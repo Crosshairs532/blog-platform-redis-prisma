@@ -9,9 +9,9 @@ const getAllUsersController = async (
   const { limit, page } = req.query;
   console.timeEnd("Query");
 
-  console.log(limit, page);
+  // console.log(limit, page);
 
-  console.log(req.user, "req.user from getAllUser")
+  // console.log(req.user, "req.user from getAllUser")
 
   try {
     const users = await userService.getAllUsers(
@@ -34,7 +34,7 @@ const getProfile = async (req: Request, res: Response, next: NextFunction) => {
 
     const loggedInUserId = req.user?.userId;
 
-    console.log({ userId }, { loggedInUserId });
+    // console.log({ userId }, { loggedInUserId });
     const profile = await userService.getUserProfile(
       userId as string,
       loggedInUserId as string,

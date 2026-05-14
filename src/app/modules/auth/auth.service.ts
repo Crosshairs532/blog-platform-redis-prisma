@@ -12,7 +12,7 @@ import { LOGIN_LUA } from "../../../constants/lua/lua.scripts";
 import { RedisKeys } from "../../../utils/redisKeys";
 
 export const registerUser = async ({ username, email, password }: any) => {
-  console.log({ username, email, password });
+  // console.log({ username, email, password });
 
   try {
     const hashed = await bcrypt.hash(password, 10);
@@ -105,7 +105,7 @@ export const logoutUser = async (req: Request) => {
     const sessionId = req?.sessionId;
     const userId = req?.user?.userId;
 
-    console.log(userId, "logoutUser");
+    // console.log(userId, "logoutUser");
 
     if (!sessionId) throw new Error("No active session found");
 
@@ -124,13 +124,13 @@ export const logoutAllDevices = async (req: Request) => {
   const redis = (await getRedis()).getClient();
   const userId = req?.user?.userId;
 
-  console.log("logout userId: ", userId);
+  // console.log("logout userId: ", userId);
   const sessionIds = await redis.sMembers(`user:${userId}:sessions`);
-  console.log("Logout: ", sessionIds);
+  // console.log("Logout: ", sessionIds);
 
   for (const sessionId of sessionIds) {
     const sessionData = await redis.hGetAll(`session:${sessionId}`);
-    console.log("sessionData-Logout: ", sessionIds);
+    // console.log("sessionData-Logout: ", sessionIds);
     await blacklistToken(redis, sessionData?.accessToken as string);
     await redis.del(`session:${sessionId}`);
   }
@@ -192,9 +192,9 @@ export const refreshAccessToken = async (refreshToken: string) => {
 
 export const getUserSessions = async (userId: string) => {
   const redis = (await getRedis()).getClient();
-  console.log("All sessionIds - ", `user:${userId}:sessions`);
+  // console.log("All sessionIds - ", `user:${userId}:sessions`);
   const sessionIds = await redis.sMembers(`user:${userId}:sessions`);
-  console.log("All sessionIds - ", sessionIds);
+  // console.log("All sessionIds - ", sessionIds);
   const sessions = [];
 
   for (const sessionId of sessionIds) {
@@ -209,6 +209,6 @@ export const getUserSessions = async (userId: string) => {
       });
     }
   }
-  console.log("All user session - ", sessions);
+  // console.log("All user session - ", sessions);
   return sessions;
 };

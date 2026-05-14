@@ -5,12 +5,13 @@ import { prisma } from "../config/db";
 import pLimit from "p-limit";
 import { AppError } from "../utils/ AppError";
 import { getRedis } from "../config/redis";
+import { rabbitMQ } from "../config/rabbitmq";
 
 const limit = pLimit(5);
 let isShuttingDown = false;
 const inFlight = new Set<Promise<any>>();
 
-const processEmailJob = async (job: any) => {
+export const processEmailJob = async (job: any) => {
   const { toUserId, type, postId, actorId } = job;
   const user = await prisma.user.findUnique({
     where: { id: toUserId },
@@ -28,59 +29,84 @@ const processEmailJob = async (job: any) => {
       username: actor?.username || actor?.email || "Someone you follow",
       postId,
     });
+
+    return emailData;
   }
-  await sendEmail({
-    name: actor?.username,
-    to: user.email,
-    subject: emailData?.subject,
-    html: emailData?.html,
-    text: emailData?.text,
-  });
+  // await sendEmail({
+  //   name: actor?.username,
+  //   to: user.email,
+  //   subject: emailData?.subject,
+  //   html: emailData?.html,
+  //   text: emailData?.text,
+  // });
 };
+
+// export const startEmailWorker = async () => {
+//   console.log("Email worker running....");
+//   const redis = (await getRedis()).getClient();
+//   try {
+//     while (true) {
+//       if (isShuttingDown) break;
+//       try {
+//         const job = await redis.brPop("queue:email", 5);
+//         if (!job) continue;
+
+//         const parsed = JSON.parse(job?.element);
+
+//         console.log("parsed from startWorker: ", parsed);
+
+//         // tracking how many times Email sending have been retired
+//         parsed.attempts = (parsed.attempts || 0) + 1;
+
+//         // retry failed mails
+//         const task = limit(() => processEmailJob(parsed)).catch(async (err) => {
+//           console.error("Email job failed:", err);
+//           if (parsed.attempts < 3) {
+//             await redis.lPush("queue:email", JSON.stringify(parsed));
+//           } else {
+//             await redis.lPush("queue:email:dead", JSON.stringify(parsed));
+//           }
+//         });
+
+//         inFlight.add(task);
+//         task.finally(() => inFlight.delete(task));
+//       } catch (error: any) {
+//         console.error("Worker poll error:", error);
+//         await new Promise((r) => setTimeout(error, 1000));
+//       }
+//     }
+//   } catch (error: any) {
+//     console.error(error);
+//     console.log("New Dev-1-2");
+//     await new Promise((r) => setTimeout(r, 1000));
+//     console.error("main Branch: ", error);
+//     throw new AppError(error?.message, 500);
+//   }
+// };
 
 export const startEmailWorker = async () => {
-  console.log("Email worker running....");
-  const redis = (await getRedis()).getClient();
-  try {
-    while (true) {
-      if (isShuttingDown) break;
-      try {
-        const job = await redis.brPop("queue:email", 5);
-        if (!job) continue;
+  const channel = rabbitMQ.getChannel();
 
-        const parsed = JSON.parse(job?.element);
+  await channel.assertQueue("email_queue", { durable: true });
 
-        console.log("parsed from startWorker: ", parsed);
+  channel.consume("email_queue", async (msg: any) => {
+    if (!msg) return;
+    const data = JSON.parse(msg.content.toString());
 
-        // tracking how many times Email sending have been retired
-        parsed.attempts = (parsed.attempts || 0) + 1;
-
-        // retry failed mails
-        const task = limit(() => processEmailJob(parsed)).catch(async (err) => {
-          console.error("Email job failed:", err);
-          if (parsed.attempts < 3) {
-            await redis.lPush("queue:email", JSON.stringify(parsed));
-          } else {
-            await redis.lPush("queue:email:dead", JSON.stringify(parsed));
-          }
-        });
-
-        inFlight.add(task);
-        task.finally(() => inFlight.delete(task));
-      } catch (error: any) {
-        console.error("Worker poll error:", error);
-        await new Promise((r) => setTimeout(error, 1000));
-      }
+    try {
+      await sendEmail({
+        to: data.to,
+        subject: data.subject,
+        html: data.html,
+        name: data.name,
+      });
+      channel.ack(msg);
+    } catch (error: any) {
+      console.error("❌ Failed to send email, requeuing...", error.message);
+      setTimeout(() => channel.nack(msg, false, true), 10000);
     }
-  } catch (error: any) {
-    console.error(error);
-    console.log("New Dev-1-2");
-    await new Promise((r) => setTimeout(r, 1000));
-    console.error("main Branch: ", error);
-    throw new AppError(error?.message, 500);
-  }
+  });
 };
-
 const shutdown = async (signal: string) => {
   console.log(`Received ${signal}, shutting down gracefully...`);
   isShuttingDown = true;
