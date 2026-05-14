@@ -1,3 +1,4 @@
+import { createNotification } from "../app/modules/notification/notification.service";
 import { rabbitMQ } from "../config/rabbitmq";
 import { getRedis } from "../config/redis";
 import { RedisKeys } from "../utils/redisKeys";
@@ -13,7 +14,7 @@ export const startFanoutWorker = async () => {
     console.log("Message from RabbitMQ:", postId, authorId, timestamp);
 
     try {
-      let cursor = 0;
+      let cursor = "0";
       do {
         const reply = await redis.sScan(
           RedisKeys.followers(authorId),
@@ -22,16 +23,25 @@ export const startFanoutWorker = async () => {
             COUNT: 1000,
           },
         );
-        cursor = Number(reply.cursor);
+        cursor = reply.cursor;
         const followers = reply.members;
         const pipeline = redis.multi();
         for (const followerId of followers) {
           const feedKey = RedisKeys.feed(followerId);
-          pipeline.zAdd(feedKey, { score: timestamp, value: postId });
+          pipeline.zAdd(feedKey, {
+            score: Number(timestamp),
+            value: String(postId),
+          });
           pipeline.zRemRangeByRank(feedKey, 0, -1001);
+
+          await createNotification({
+            userId: followerId,
+            type: "POST_CREATED",
+            data: { actorId: authorId, postId: postId },
+          });
         }
         await pipeline.exec();
-      } while (cursor !== 0);
+      } while (cursor !== "0");
       channel.ack(msg);
     } catch (error) {
       console.error("Error in fanout worker:", error);

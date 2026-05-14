@@ -1,3 +1,4 @@
+// src/config/rabbitmq.ts
 import amqp from "amqplib";
 
 class RabbitMQService {
@@ -5,19 +6,30 @@ class RabbitMQService {
   private channel: any;
 
   async init() {
-    this.connection = await amqp.connect(
-      process.env.RABBITMQ_URL || "amqp://localhost",
-    );
-    this.channel = await this.connection.createChannel();
+    try {
+      this.connection = await amqp.connect(
+        process.env.RABBITMQ_URL || "amqp://localhost",
+      );
+      this.channel = await this.connection.createChannel();
 
-    // Assert Queues
-    await this.channel.assertQueue("post_fanout_queue", { durable: true });
-    await this.channel.assertQueue("notification_queue", { durable: true });
+      // Queues Assert
+      await this.channel.assertQueue("post_fanout_queue", { durable: true });
+      await this.channel.assertQueue("notification_queue", { durable: true });
+      await this.channel.assertQueue("cache_invalidation", { durable: true });
 
-    console.log(" RabbitMQ Connected and Queues Asserted");
+      console.log("✅ RabbitMQ Connected and Queues Asserted");
+    } catch (error) {
+      console.error("❌ RabbitMQ Connection Failed:", error);
+      process.exit(1);
+    }
   }
 
   getChannel() {
+    if (!this.channel) {
+      throw new Error(
+        "RabbitMQ Channel is not initialized. Call init() first.",
+      );
+    }
     return this.channel;
   }
 }

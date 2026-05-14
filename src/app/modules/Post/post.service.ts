@@ -92,6 +92,10 @@ export const getFeed = async (userId: string, page = 0, limit = 20) => {
   const allIds: any = Array.from(
     new Set([...regularPostIds, ...celebrityPostIds]),
   );
+
+  if (allIds.length === 0) {
+    return [];
+  }
   const cachedPosts = await redis.mGet(allIds.map((id: any) => `post:${id}`));
 
   const posts: any[] = [];
