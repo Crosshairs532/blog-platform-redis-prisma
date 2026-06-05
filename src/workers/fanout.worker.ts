@@ -4,7 +4,7 @@ import { createNotification } from "../app/modules/notification/notification.ser
 import { rabbitMQ } from "../config/rabbitmq";
 import { getRedis } from "../config/redis";
 import { RedisKeys } from "../utils/redisKeys";
-import { prisma } from "../config/db"; // CHANGE: Prisma ইম্পোর্ট করতে হবে
+import { prisma } from "../config/db"; 
 
 export const startFanoutWorker = async () => {
   console.log(" Fanout worker running....");
